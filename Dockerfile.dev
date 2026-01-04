@@ -1,0 +1,33 @@
+# Development Dockerfile for Next.js with live reload (monorepo support)
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat
+
+# First, install packages/ui dependencies (needed by portal)
+WORKDIR /app/packages/ui
+COPY packages/ui/package.json packages/ui/package-lock.json* ./
+RUN npm ci || npm install
+
+# Copy packages/ui source (needed for build)
+COPY packages/ui ./
+
+# Build the UI package (needed for Next.js to resolve imports)
+RUN npm run build
+
+# Now install portal dependencies (which references @lvos/ui via file:)
+WORKDIR /app/apps/portal
+COPY apps/portal/package.json apps/portal/package-lock.json* ./
+RUN npm ci || npm install
+
+# Copy portal source code
+COPY apps/portal ./
+
+# Expose port
+EXPOSE 3000
+
+# Start development server with live reload
+CMD ["npm", "run", "dev", "--", "--port", "3000", "--hostname", "0.0.0.0"]
+
