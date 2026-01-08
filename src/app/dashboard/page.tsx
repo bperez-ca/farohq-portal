@@ -1,13 +1,83 @@
 'use client'
 
-import { useUser, useAuth } from '@clerk/nextjs'
+import { useUser, useAuth, useOrganization } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+
+interface BackendUserInfo {
+  user_id: string
+  email: string | null
+  first_name: string | null
+  last_name: string | null
+  name: string | null
+  created_at: number | string | null
+  org_id: string | null
+  org_slug: string | null
+  org_role: string | null
+}
 
 export default function DashboardPage() {
   const { user, isLoaded: userLoaded } = useUser()
-  const { signOut } = useAuth()
+  const { isLoaded: authLoaded, signOut, getToken } = useAuth()
+  const { organization, isLoaded: orgLoaded, membership } = useOrganization()
   const router = useRouter()
+  const [backendInfo, setBackendInfo] = useState<BackendUserInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch backend-specific user info from our /auth/me endpoint (org info, etc.)
+  useEffect(() => {
+    async function fetchBackendInfo() {
+      // Wait for Clerk, auth, and org to be loaded
+      if (!authLoaded || !userLoaded || !orgLoaded) {
+        return
+      }
+
+      // If user is not authenticated, redirect
+      if (!user) {
+        router.push('/signin')
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+        // Use Next.js route handler (relative path) which proxies to backend
+        // Pass Clerk token for authentication (route handler will also try to get it server-side)
+        const token = await getToken()
+        const response = await fetch('/api/v1/auth/me', {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: 'include', // Include cookies for server-side auth
+        })
+
+        if (!response.ok) {
+          // If unauthorized, don't show error - just redirect
+          if (response.status === 401) {
+            router.push('/signin')
+            return
+          }
+          throw new Error(`Failed to fetch user info: ${response.status} ${response.statusText}`)
+        }
+
+        const data = await response.json()
+        setBackendInfo(data)
+      } catch (err) {
+        console.error('Failed to fetch backend user info:', err)
+        // Don't set error for auth failures - we'll redirect instead
+        if (err instanceof Error && !err.message.includes('401')) {
+          setError(err.message)
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchBackendInfo()
+  }, [authLoaded, userLoaded, orgLoaded, user, getToken, router])
 
   const handleLogout = async () => {
     try {
@@ -18,7 +88,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (!userLoaded) {
+  if (!authLoaded || !userLoaded || !orgLoaded || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -29,10 +99,73 @@ export default function DashboardPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Error: {error}</p>
+          <button
+            onClick={() => router.push('/signin')}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md"
+          >
+            Go to Sign In
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!user) {
-    router.push('/signin')
     return null
   }
+
+  // Format created_at timestamp if available
+  const formatDate = (timestamp: number | string | Date | null | undefined): string => {
+    if (!timestamp) return 'Unknown'
+    try {
+      // Handle Date objects directly
+      if (timestamp instanceof Date) {
+        return timestamp.toLocaleDateString()
+      }
+      // Handle numeric timestamps (Unix seconds)
+      const date = typeof timestamp === 'number' 
+        ? new Date(timestamp * 1000)
+        : new Date(timestamp)
+      return date.toLocaleDateString()
+    } catch {
+      return 'Unknown'
+    }
+  }
+
+  // Get user email from Clerk (primary email)
+  const userEmail = user.emailAddresses?.[0]?.emailAddress || backendInfo?.email || 'No email'
+  
+  // Get user name from Clerk (preferred) or fallback to backend
+  const firstName = user.firstName || backendInfo?.first_name || null
+  const lastName = user.lastName || backendInfo?.last_name || null
+  const fullName = user.fullName || (firstName && lastName ? `${firstName} ${lastName}` : null) || backendInfo?.name || null
+  
+  // Get user profile image
+  const imageUrl = user.imageUrl || null
+  
+  // Get phone numbers from Clerk
+  const phoneNumbers = user.phoneNumbers?.map(p => p.phoneNumber) || []
+  
+  // Get created_at from Clerk (preferred) or backend
+  const createdAt = user.createdAt ? new Date(user.createdAt) : (backendInfo?.created_at ? formatDate(backendInfo.created_at) : null)
+  
+  // Get last sign-in time
+  const lastSignInAt = user.lastSignInAt ? new Date(user.lastSignInAt) : null
+  const updatedAt = user.updatedAt ? new Date(user.updatedAt) : null
+  
+  // Get organization info from Clerk (preferred) or backend
+  const orgName = organization?.name || null
+  const orgSlug = organization?.slug || backendInfo?.org_slug || null
+  const orgId = organization?.id || backendInfo?.org_id || null
+  const orgRole = membership?.role || backendInfo?.org_role || null
+  const orgPublicMetadata = organization?.publicMetadata || null
+  const orgImageUrl = organization?.imageUrl || null
+  const orgCreatedAt = organization?.createdAt ? new Date(organization.createdAt) : null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,7 +178,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-500">
-                Welcome, {user.emailAddresses[0]?.emailAddress || user.firstName || 'User'}
+                Welcome, {fullName || firstName || userEmail || 'User'}
               </span>
               <button
                 onClick={handleLogout}
@@ -77,27 +210,126 @@ export default function DashboardPage() {
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Email</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      {user.emailAddresses[0]?.emailAddress || 'No email'}
+                      {userEmail}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">User ID</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{user.id}</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{user.id || backendInfo?.user_id || 'Not available'}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">First Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{user.firstName || 'Not set'}</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{firstName || 'Not set'}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Last Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{user.lastName || 'Not set'}</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{lastName || 'Not set'}</dd>
                   </div>
-                  <div className="sm:col-span-2">
+                  {fullName && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">Full Name</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{fullName}</dd>
+                    </div>
+                  )}
+                  {imageUrl && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">Profile Image</dt>
+                      <dd className="mt-1">
+                        <img 
+                          src={imageUrl} 
+                          alt="Profile" 
+                          className="h-20 w-20 rounded-full object-cover"
+                        />
+                      </dd>
+                    </div>
+                  )}
+                  {phoneNumbers.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">Phone Numbers</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {phoneNumbers.map((phone, idx) => (
+                          <div key={idx}>{phone}</div>
+                        ))}
+                      </dd>
+                    </div>
+                  )}
+                  <div>
                     <dt className="text-sm font-medium text-gray-500">Created At</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unknown'}
+                      {createdAt instanceof Date ? createdAt.toLocaleDateString() : createdAt || 'Unknown'}
                     </dd>
                   </div>
+                  {lastSignInAt && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Last Sign In</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {lastSignInAt.toLocaleDateString()} {lastSignInAt.toLocaleTimeString()}
+                      </dd>
+                    </div>
+                  )}
+                  {updatedAt && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">Last Updated</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {updatedAt.toLocaleDateString()} {updatedAt.toLocaleTimeString()}
+                      </dd>
+                    </div>
+                  )}
+                  {orgId && (
+                    <>
+                      <div className="sm:col-span-2 border-t pt-4 mt-4">
+                        <h4 className="text-md font-semibold text-gray-900 mb-3">Organization Information</h4>
+                      </div>
+                      {orgImageUrl && (
+                        <div className="sm:col-span-2">
+                          <dt className="text-sm font-medium text-gray-500">Organization Logo</dt>
+                          <dd className="mt-1">
+                            <img 
+                              src={orgImageUrl} 
+                              alt="Organization Logo" 
+                              className="h-16 w-16 rounded object-cover"
+                            />
+                          </dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Organization Name</dt>
+                        <dd className="mt-1 text-sm text-gray-900 font-semibold">{orgName || 'Not set'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Organization ID</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{orgId}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Organization Role</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{orgRole || 'Not set'}</dd>
+                      </div>
+                      {orgSlug && (
+                        <div>
+                          <dt className="text-sm font-medium text-gray-500">Organization Slug</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{orgSlug}</dd>
+                        </div>
+                      )}
+                      {orgCreatedAt && (
+                        <div>
+                          <dt className="text-sm font-medium text-gray-500">Organization Created</dt>
+                          <dd className="mt-1 text-sm text-gray-900">
+                            {orgCreatedAt.toLocaleDateString()}
+                          </dd>
+                        </div>
+                      )}
+                      {orgPublicMetadata && Object.keys(orgPublicMetadata).length > 0 && (
+                        <div className="sm:col-span-2">
+                          <dt className="text-sm font-medium text-gray-500">Organization Metadata</dt>
+                          <dd className="mt-1 text-sm text-gray-900">
+                            <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto max-h-32">
+                              {JSON.stringify(orgPublicMetadata, null, 2)}
+                            </pre>
+                          </dd>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </dl>
               </div>
 
