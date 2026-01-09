@@ -26,9 +26,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch backend-specific user info from our /auth/me endpoint (org info, etc.)
+  // Sync user data to backend and fetch backend-specific user info
   useEffect(() => {
-    async function fetchBackendInfo() {
+    async function syncAndFetchUserInfo() {
       // Wait for Clerk, auth, and org to be loaded
       if (!authLoaded || !userLoaded || !orgLoaded) {
         return
@@ -43,9 +43,42 @@ export default function DashboardPage() {
       try {
         setLoading(true)
         setError(null)
-        // Use Next.js route handler (relative path) which proxies to backend
-        // Pass Clerk token for authentication (route handler will also try to get it server-side)
+        
+        // Get Clerk token
         const token = await getToken()
+        if (!token) {
+          router.push('/signin')
+          return
+        }
+
+        // First, sync user data to backend
+        try {
+          const userData = {
+            clerk_user_id: user.id,
+            email: user.emailAddresses?.[0]?.emailAddress || '',
+            first_name: user.firstName || '',
+            last_name: user.lastName || '',
+            full_name: user.fullName || '',
+            image_url: user.imageUrl || '',
+            phone_numbers: user.phoneNumbers?.map(p => p.phoneNumber) || [],
+            last_sign_in_at: user.lastSignInAt ? Math.floor(new Date(user.lastSignInAt).getTime() / 1000) : null,
+          }
+
+          await fetch('/api/v1/users/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(userData),
+          })
+          // Don't fail if sync fails, just log it
+        } catch (syncError) {
+          console.error('Failed to sync user data:', syncError)
+          // Continue to fetch user info even if sync fails
+        }
+
+        // Then fetch backend-specific user info
         const response = await fetch('/api/v1/auth/me', {
           headers: {
             'Content-Type': 'application/json',
@@ -76,7 +109,7 @@ export default function DashboardPage() {
       }
     }
 
-    fetchBackendInfo()
+    syncAndFetchUserInfo()
   }, [authLoaded, userLoaded, orgLoaded, user, getToken, router])
 
   const handleLogout = async () => {

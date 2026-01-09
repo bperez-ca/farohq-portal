@@ -14,7 +14,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '
  */
 export async function getClerkToken(): Promise<string | null> {
   try {
-    const { getToken } = auth();
+    const { getToken } = await auth();
     const token = await getToken();
     return token;
   } catch (error) {
