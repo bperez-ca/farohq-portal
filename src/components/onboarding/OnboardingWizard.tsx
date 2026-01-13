@@ -11,8 +11,12 @@ export interface OnboardingData {
   // Step 1: Branding
   agencyName: string
   logoUrl?: string
+  faviconUrl?: string
   brandColor: string
+  secondaryColor?: string
+  website?: string // Optional: Agency website (captured during onboarding)
   customDomain?: string
+  subdomain?: string // Auto-generated for lower tiers
   
   // Step 2: Location
   businessName: string
@@ -24,6 +28,7 @@ export interface OnboardingData {
   // Created resources
   tenantId?: string
   locationId?: string
+  tier?: string // Current tier (starter, growth, scale)
 }
 
 export function OnboardingWizard() {

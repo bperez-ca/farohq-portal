@@ -37,3 +37,18 @@ next-env.d.ts
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# E2E test results (Playwright)
+/test-results/
+/playwright-report/
+/playwright/.cache/
+*.webm
+*.png
+error-context.md
+.last-run.json
+
+# Other project directories (prevent accidental inclusion)
+../farohq-static-site/
+../lvos/
+../farohq-landing-mocks/
+../faro-mocks/

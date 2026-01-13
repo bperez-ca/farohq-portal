@@ -1,9 +1,10 @@
 'use client'
 
-import { useUser, useAuth, useOrganization } from '@clerk/nextjs'
+import { useUser, useAuth } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { OrgSelector } from '@/components/OrgSelector'
 
 interface BackendUserInfo {
   user_id: string
@@ -17,20 +18,30 @@ interface BackendUserInfo {
   org_role: string | null
 }
 
+interface OrganizationInfo {
+  id: string
+  name: string
+  slug: string
+  role: string
+  created_at: string
+}
+
 export default function DashboardPage() {
   const { user, isLoaded: userLoaded } = useUser()
   const { isLoaded: authLoaded, signOut, getToken } = useAuth()
-  const { organization, isLoaded: orgLoaded, membership } = useOrganization()
   const router = useRouter()
   const [backendInfo, setBackendInfo] = useState<BackendUserInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [orgCount, setOrgCount] = useState<number | null>(null)
+  const [orgs, setOrgs] = useState<OrganizationInfo[]>([])
+  const [currentOrg, setCurrentOrg] = useState<OrganizationInfo | null>(null)
 
   // Sync user data to backend and fetch backend-specific user info
   useEffect(() => {
     async function syncAndFetchUserInfo() {
-      // Wait for Clerk, auth, and org to be loaded
-      if (!authLoaded || !userLoaded || !orgLoaded) {
+      // Wait for Clerk and auth to be loaded
+      if (!authLoaded || !userLoaded) {
         return
       }
 
@@ -39,6 +50,9 @@ export default function DashboardPage() {
         router.push('/signin')
         return
       }
+
+      // Note: Org count check is now done in the separate useEffect hook
+      // This avoids duplicate API calls and ensures org data is available
 
       try {
         setLoading(true)
@@ -110,7 +124,55 @@ export default function DashboardPage() {
     }
 
     syncAndFetchUserInfo()
-  }, [authLoaded, userLoaded, orgLoaded, user, getToken, router])
+  }, [authLoaded, userLoaded, user, getToken, router])
+
+  // Fetch organizations for org selector and display
+  useEffect(() => {
+    async function fetchOrgs() {
+      if (!userLoaded || !user) {
+        return
+      }
+
+      try {
+        const response = await fetch('/api/v1/tenants/my-orgs', {
+          credentials: 'include',
+        })
+        
+        if (!response.ok) {
+          console.error('Failed to fetch orgs: HTTP', response.status, await response.text().catch(() => ''))
+          return
+        }
+        
+        const data = await response.json()
+        console.log('Fetched orgs data:', data) // Debug log
+        
+        const orgsList: OrganizationInfo[] = data.orgs || []
+        setOrgs(orgsList)
+        setOrgCount(data.count || orgsList.length)
+        
+        // Check if user has any orgs - if not, redirect to onboarding
+        if (orgsList.length === 0) {
+          router.push('/onboarding')
+          return
+        }
+        
+        // Set current org (use first org, or can be enhanced to use active org from localStorage)
+        // Try to get active org from localStorage, otherwise use first org
+        const activeOrgId = localStorage.getItem('farohq_active_org_id')
+        const activeOrg = activeOrgId 
+          ? orgsList.find(org => org.id === activeOrgId) 
+          : orgsList[0]
+        const selectedOrg = activeOrg || orgsList[0]
+        setCurrentOrg(selectedOrg)
+        console.log('Set current org:', selectedOrg) // Debug log
+      } catch (error) {
+        console.error('Failed to fetch orgs:', error)
+        // Don't redirect on error - let user stay on dashboard
+      }
+    }
+
+    fetchOrgs()
+  }, [userLoaded, user, router])
 
   const handleLogout = async () => {
     try {
@@ -121,7 +183,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (!authLoaded || !userLoaded || !orgLoaded || loading) {
+  if (!authLoaded || !userLoaded || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -191,14 +253,16 @@ export default function DashboardPage() {
   const lastSignInAt = user.lastSignInAt ? new Date(user.lastSignInAt) : null
   const updatedAt = user.updatedAt ? new Date(user.updatedAt) : null
   
-  // Get organization info from Clerk (preferred) or backend
-  const orgName = organization?.name || null
-  const orgSlug = organization?.slug || backendInfo?.org_slug || null
-  const orgId = organization?.id || backendInfo?.org_id || null
-  const orgRole = membership?.role || backendInfo?.org_role || null
-  const orgPublicMetadata = organization?.publicMetadata || null
-  const orgImageUrl = organization?.imageUrl || null
-  const orgCreatedAt = organization?.createdAt ? new Date(organization.createdAt) : null
+  // Get organization info from backend (prefer currentOrg from my-orgs endpoint)
+  // Fall back to first org in list if currentOrg not set yet
+  const displayOrg = currentOrg || (orgs.length > 0 ? orgs[0] : null)
+  const orgName = displayOrg?.name || null
+  const orgSlug = displayOrg?.slug || backendInfo?.org_slug || null
+  const orgId = displayOrg?.id || backendInfo?.org_id || null
+  const orgRole = displayOrg?.role || backendInfo?.org_role || null
+  const orgPublicMetadata = null // Not in backend API response yet, can be added if needed
+  const orgImageUrl = null // Not in backend API response yet, can be added if needed
+  const orgCreatedAt = displayOrg?.created_at ? new Date(displayOrg.created_at) : null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -210,6 +274,9 @@ export default function DashboardPage() {
               <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
             </div>
             <div className="flex items-center space-x-4">
+              {orgCount !== null && orgCount > 1 && (
+                <OrgSelector className="mr-4" />
+              )}
               <span className="text-sm text-gray-500">
                 Welcome, {fullName || firstName || userEmail || 'User'}
               </span>
@@ -308,7 +375,7 @@ export default function DashboardPage() {
                       </dd>
                     </div>
                   )}
-                  {orgId && (
+                  {(currentOrg || orgs.length > 0) && (
                     <>
                       <div className="sm:col-span-2 border-t pt-4 mt-4">
                         <h4 className="text-md font-semibold text-gray-900 mb-3">Organization Information</h4>

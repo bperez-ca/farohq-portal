@@ -40,13 +40,20 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
 
-    /* Brand theme variables (dynamically set via JavaScript) */
+    /* Brand theme variables (dynamically set via JavaScript from brand API) */
     --brand-color: #2563eb;
     --brand-color-hover: #1d4ed8;
     --brand-accent: #10b981;
     --brand-font: 'Inter', system-ui, sans-serif;
     --brand-secondary: #6b7280;
+    --brand-secondary-color: var(--brand-secondary);
     --font-family: var(--brand-font);
+    
+    /* Map brand colors to Tailwind variables (updated dynamically) */
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
   }
 
   .dark {

@@ -1,0 +1,574 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
+import { Upload, X, Save, AlertCircle, CheckCircle2 } from 'lucide-react'
+import axios from 'axios'
+import { DomainVerification } from '@/components/branding/DomainVerification'
+import { useRouter } from 'next/navigation'
+
+const brandingSchema = z.object({
+  website: z.string().url('Invalid URL format').optional().or(z.literal('')),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format'),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format').optional(),
+  hidePoweredBy: z.boolean().optional(),
+  domain: z.string().optional(), // Optional: Custom domain (Scale tier only)
+})
+
+type BrandingFormData = z.infer<typeof brandingSchema>
+
+interface BrandData {
+  agency_id: string
+  domain: string | null
+  subdomain: string | null
+  domain_type: string | null
+  website: string | null
+  logo_url: string | null
+  favicon_url: string | null
+  primary_color: string | null
+  secondary_color: string | null
+  hide_powered_by: boolean
+  can_hide_powered_by: boolean
+  can_configure_domain: boolean
+  ssl_status: string | null
+  tier?: string
+}
+
+export default function BrandingSettingsPage() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [brandData, setBrandData] = useState<BrandData | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [faviconFile, setFaviconFile] = useState<File | null>(null)
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const faviconInputRef = useRef<HTMLInputElement>(null)
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isDirty },
+  } = useForm<BrandingFormData>({
+    resolver: zodResolver(brandingSchema),
+    defaultValues: {
+      website: '',
+      primaryColor: '#2563eb',
+      secondaryColor: '',
+      hidePoweredBy: false,
+      domain: '',
+    },
+  })
+
+  const primaryColor = watch('primaryColor')
+  const secondaryColor = watch('secondaryColor')
+  const website = watch('website')
+  const hidePoweredBy = watch('hidePoweredBy')
+
+  // Load brand data
+  useEffect(() => {
+    loadBrandData()
+  }, [])
+
+  const loadBrandData = async () => {
+    try {
+      setLoading(true)
+      // Get brand ID from context (tenant ID = agency ID = brand ID)
+      const response = await axios.get('/api/v1/brands', {
+        withCredentials: true,
+      })
+
+      if (response.data && response.data.length > 0) {
+        const brand = response.data[0]
+        setBrandData(brand)
+        setValue('website', brand.website || '')
+        setValue('primaryColor', brand.primary_color || '#2563eb')
+        setValue('secondaryColor', brand.secondary_color || '')
+        setValue('hidePoweredBy', brand.hide_powered_by || false)
+        setValue('domain', brand.domain || '')
+        setLogoPreview(brand.logo_url || null)
+        setFaviconPreview(brand.favicon_url || null)
+      }
+    } catch (error: any) {
+      console.error('Failed to load brand data:', error)
+      setError('Failed to load branding settings. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const uploadFile = async (file: File, assetType: 'logo' | 'favicon'): Promise<string | undefined> => {
+    if (!brandData) return undefined
+
+    try {
+      setIsUploading(true)
+      // Get presigned URL
+      const signResponse = await axios.post('/api/v1/files/sign', {
+        agency_id: brandData.agency_id,
+        asset: assetType,
+      }, {
+        withCredentials: true,
+      })
+
+      const { url: presignedUrl, key, headers: presignedHeaders } = signResponse.data
+
+      // Upload file directly to GCS/S3
+      await axios.put(presignedUrl, file, {
+        headers: {
+          ...presignedHeaders,
+          'Content-Type': file.type,
+        },
+      })
+
+      // Construct public URL from key
+      // For GCS: https://storage.googleapis.com/{bucket}/{key}
+      const bucket = process.env.NEXT_PUBLIC_GCS_BUCKET_NAME || 'farohq-files'
+      const publicUrl = `https://storage.googleapis.com/${bucket}/${key}`
+      return publicUrl
+    } catch (error) {
+      console.error(`Failed to upload ${assetType}:`, error)
+      throw error
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const onSubmit = async (formData: BrandingFormData) => {
+    try {
+      setSaving(true)
+      setError(null)
+      setSuccess(false)
+
+      if (!brandData) {
+        setError('Brand data not loaded')
+        return
+      }
+
+      // Upload logo if changed
+      let logoUrl: string | undefined = brandData.logo_url || undefined
+      if (logoFile) {
+        try {
+          logoUrl = await uploadFile(logoFile, 'logo')
+        } catch (error) {
+          console.error('Failed to upload logo:', error)
+          setError('Failed to upload logo. Please try again.')
+          return
+        }
+      }
+
+      // Upload favicon if changed
+      let faviconUrl: string | undefined = brandData.favicon_url || undefined
+      if (faviconFile) {
+        try {
+          faviconUrl = await uploadFile(faviconFile, 'favicon')
+        } catch (error) {
+          console.error('Failed to upload favicon:', error)
+          setError('Failed to upload favicon. Please try again.')
+          return
+        }
+      }
+
+      // Update brand
+      const updatePayload: any = {
+        website: formData.website || null,
+        primary_color: formData.primaryColor,
+        secondary_color: formData.secondaryColor || null,
+        hide_powered_by: formData.hidePoweredBy || false,
+      }
+
+      // Only include logo/favicon if uploaded
+      if (logoUrl) {
+        updatePayload.logo_url = logoUrl
+      }
+      if (faviconUrl) {
+        updatePayload.favicon_url = faviconUrl
+      }
+
+      // Domain configuration (Scale tier only, validated on backend)
+      if (formData.domain !== undefined) {
+        updatePayload.domain = formData.domain || null
+      }
+
+      const updateResponse = await axios.put(`/api/v1/brands?brandId=${brandData.agency_id}`, updatePayload, {
+        withCredentials: true,
+      })
+
+      // Handle tier-related errors (403 Forbidden)
+      if (updateResponse.status === 403) {
+        const errorData = updateResponse.data
+        setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
+        return
+      }
+
+      setSuccess(true)
+      setBrandData(updateResponse.data)
+      
+      // Reload brand data to get updated fields
+      await loadBrandData()
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (error: any) {
+      console.error('Failed to update brand:', error)
+      const errorMessage = error.response?.data?.error || 
+                          error.response?.data?.message ||
+                          error.message ||
+                          'Failed to update branding settings. Please try again.'
+      setError(errorMessage)
+
+      // Handle tier-related errors
+      if (error.response?.status === 403) {
+        const errorData = error.response?.data
+        setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">Loading branding settings...</div>
+      </div>
+    )
+  }
+
+  if (!brandData) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-red-500">Failed to load branding settings</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Branding Settings</h1>
+        <p className="text-muted-foreground">
+          Customize your portal's branding, colors, and domain settings.
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 text-red-600" />
+          <span className="text-red-600 dark:text-red-400">{error}</span>
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+          <CheckCircle2 className="w-5 h-5 text-green-600" />
+          <span className="text-green-600 dark:text-green-400">Branding settings updated successfully!</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Brand Assets</CardTitle>
+            <CardDescription>Upload your logo and favicon</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Logo Upload */}
+            <div>
+              <Label htmlFor="logo">Logo</Label>
+              {logoPreview ? (
+                <div className="relative mt-2 inline-block">
+                  <div className="border-2 rounded-lg p-4">
+                    <img
+                      src={logoPreview}
+                      alt="Logo preview"
+                      className="max-h-32"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoFile(null)
+                      setLogoPreview(brandData.logo_url || null)
+                      if (logoInputRef.current) {
+                        logoInputRef.current.value = ''
+                      }
+                    }}
+                    className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => logoInputRef.current?.click()}
+                  className="border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 transition-colors mt-2"
+                >
+                  <Upload className="w-6 h-6 mx-auto mb-2" />
+                  Click to upload logo
+                  <br />
+                  <span className="text-xs">PNG, SVG, JPG up to 2MB (64x64 to 2048x2048px)</span>
+                </div>
+              )}
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/svg+xml,image/jpeg,image/jpg"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    setLogoFile(file)
+                    const reader = new FileReader()
+                    reader.onloadend = () => {
+                      setLogoPreview(reader.result as string)
+                    }
+                    reader.readAsDataURL(file)
+                  }
+                }}
+                className="hidden"
+              />
+            </div>
+
+            {/* Favicon Upload */}
+            <div>
+              <Label htmlFor="favicon">Favicon (Optional)</Label>
+              {faviconPreview ? (
+                <div className="relative mt-2 inline-block">
+                  <div className="border-2 rounded-lg p-2 w-16 h-16">
+                    <img
+                      src={faviconPreview}
+                      alt="Favicon preview"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFaviconFile(null)
+                      setFaviconPreview(brandData.favicon_url || null)
+                      if (faviconInputRef.current) {
+                        faviconInputRef.current.value = ''
+                      }
+                    }}
+                    className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => faviconInputRef.current?.click()}
+                  className="border-2 border-dashed rounded-lg p-6 text-center text-sm text-muted-foreground cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 transition-colors mt-2"
+                >
+                  <Upload className="w-4 h-4 mx-auto mb-2" />
+                  Click to upload favicon
+                  <br />
+                  <span className="text-xs">PNG, SVG, ICO up to 1MB (16x16 to 512x512px, square)</span>
+                </div>
+              )}
+              <input
+                ref={faviconInputRef}
+                type="file"
+                accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    setFaviconFile(file)
+                    const reader = new FileReader()
+                    reader.onloadend = () => {
+                      setFaviconPreview(reader.result as string)
+                    }
+                    reader.readAsDataURL(file)
+                  }
+                }}
+                className="hidden"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Brand Colors</CardTitle>
+            <CardDescription>Set your primary and secondary brand colors</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="primary-color">Primary Color</Label>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  id="primary-color"
+                  type="color"
+                  value={primaryColor}
+                  onChange={(e) => setValue('primaryColor', e.target.value)}
+                  className="w-20 h-10 cursor-pointer"
+                />
+                <Input
+                  placeholder="#2563eb"
+                  {...register('primaryColor')}
+                  className={errors.primaryColor ? 'border-red-500' : ''}
+                />
+              </div>
+              {errors.primaryColor && (
+                <p className="text-sm text-red-500 mt-1">{errors.primaryColor.message}</p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="secondary-color">Secondary Color (Optional)</Label>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  id="secondary-color"
+                  type="color"
+                  value={secondaryColor || '#64748b'}
+                  onChange={(e) => setValue('secondaryColor', e.target.value)}
+                  className="w-20 h-10 cursor-pointer"
+                />
+                <Input
+                  placeholder="#64748b"
+                  {...register('secondaryColor')}
+                  className={errors.secondaryColor ? 'border-red-500' : ''}
+                />
+              </div>
+              {errors.secondaryColor && (
+                <p className="text-sm text-red-500 mt-1">{errors.secondaryColor.message}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Website & Domain</CardTitle>
+            <CardDescription>Configure your agency website and custom domain</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Website field (always editable, optional) */}
+            <div>
+              <Label htmlFor="website">Agency Website (Optional)</Label>
+              <Input
+                id="website"
+                type="url"
+                placeholder="https://your-agency.com"
+                {...register('website')}
+                className={errors.website ? 'border-red-500' : ''}
+              />
+              {errors.website && (
+                <p className="text-sm text-red-500 mt-1">{errors.website.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                {website 
+                  ? "We'll use this to set up your custom domain when you upgrade to Scale tier"
+                  : "Add your website to enable custom domain setup when you upgrade to Scale tier"}
+              </p>
+            </div>
+
+            {/* Domain/Subdomain Display */}
+            {brandData.subdomain && (
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm font-medium mb-1">Your Portal URL:</p>
+                <p className="text-lg font-semibold">{brandData.subdomain}</p>
+                {brandData.domain_type === 'subdomain' && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    You're currently using a subdomain. Upgrade to Scale tier to use your custom domain.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Custom Domain Configuration (Scale tier only) */}
+            {brandData.can_configure_domain && (
+              <div>
+                <Label htmlFor="domain">Custom Domain (Scale tier only)</Label>
+                <Input
+                  id="domain"
+                  placeholder="portal.youragency.com"
+                  {...register('domain')}
+                  defaultValue={brandData.domain || ''}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Configure your custom domain. We'll send setup instructions after you save.
+                </p>
+                {brandData.domain && (
+                  <div className="mt-4">
+                    <DomainVerification brandId={brandData.agency_id} domain={brandData.domain} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!brandData.can_configure_domain && brandData.domain && (
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">
+                  Custom Domain: {brandData.domain}
+                </p>
+                <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                  Custom domain support is only available for Scale tier. Upgrade to enable this feature.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Branding Badge</CardTitle>
+            <CardDescription>Control the "Powered by Faro" badge visibility</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="hide-powered-by"
+                {...register('hidePoweredBy')}
+                disabled={!brandData.can_hide_powered_by}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <Label htmlFor="hide-powered-by" className="cursor-pointer">
+                Hide "Powered by Faro" badge
+              </Label>
+            </div>
+            {!brandData.can_hide_powered_by && (
+              <p className="text-xs text-muted-foreground mt-2">
+                This feature is only available for Growth+ tiers. Upgrade to hide the badge.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end gap-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.back()}
+            disabled={saving || isUploading}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={saving || isUploading || !isDirty}
+            style={{ backgroundColor: primaryColor }}
+          >
+            {saving || isUploading ? (
+              'Saving...'
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

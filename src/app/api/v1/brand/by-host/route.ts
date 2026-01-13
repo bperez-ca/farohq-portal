@@ -59,10 +59,19 @@ function getDefaultTheme(request?: NextRequest) {
   
   return {
     agency_id: 'dev-agency-id',
+    domain: null,
+    subdomain: null,
+    domain_type: null,
+    website: null,
     logo_url: `${baseUrl}/logo.svg`,
     favicon_url: `${baseUrl}/favicon.svg`,
     primary_color: '#2563eb',
     secondary_color: '#6b7280',
+    hide_powered_by: false,
+    can_hide_powered_by: false,
+    can_configure_domain: false,
+    email_domain: null,
+    ssl_status: null,
     theme_json: {
       name: 'default-theme',
       version: '1.0.0',
@@ -77,6 +86,8 @@ function getDefaultTheme(request?: NextRequest) {
         accent: '#10b981',
       },
     },
+    verified_at: null,
+    updated_at: new Date().toISOString(),
   };
 }
 

@@ -3,7 +3,9 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@farohq/ui'
 import { Favicon } from '../components/Favicon'
+import { PoweredByBadge } from '../components/PoweredByBadge'
 import { ClerkProvider } from '@clerk/nextjs'
+import { BrandThemeProvider } from '../components/branding/BrandThemeProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -30,8 +32,11 @@ export default function RootLayout({
             brandApiUrl={apiUrl}
             enableBrandTheme={true}
           >
-            <Favicon />
-            {children}
+            <BrandThemeProvider>
+              <Favicon />
+              {children}
+              <PoweredByBadge />
+            </BrandThemeProvider>
           </ThemeProvider>
         </body>
       </html>
