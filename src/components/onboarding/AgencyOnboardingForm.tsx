@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
 import { Upload, X } from 'lucide-react'
+import { safeLogError, safeLogWarn } from '@/lib/log-sanitizer'
 
 const onboardingSchema = z.object({
   agencyName: z.string().min(1, 'Agency name is required'),
@@ -14,12 +15,15 @@ const onboardingSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
   website: z.string().url('Invalid URL format').optional().or(z.literal('')),
   brandColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format'),
+  subdomain: z.string()
+    .min(3, 'Subdomain must be at least 3 characters')
+    .regex(/^[a-z0-9-]+$/, 'Subdomain can only contain lowercase letters, numbers, and hyphens'),
 })
 
 type OnboardingFormData = z.infer<typeof onboardingSchema>
 
 interface AgencyOnboardingFormProps {
-  onComplete: (data: OnboardingFormData & { logoUrl?: string }) => void
+  onComplete: (data: OnboardingFormData & { logoUrl?: string; tenantId?: string; subdomain?: string }) => void
 }
 
 // Helper function to generate slug from text
@@ -50,18 +54,66 @@ function extractDomainFromWebsite(websiteUrl: string): string {
   }
 }
 
-// Helper function to generate subdomain from website
+// Helper function to remove TLD and subdomain from domain
+// e.g., "subdomain.example.com" -> "example", "www.example.com.mx" -> "example"
+function removeTLDFromDomain(domain: string): string {
+  if (!domain) return ''
+  
+  // Remove common subdomain prefixes (www, app, api, etc.)
+  const subdomainPrefixes = ['www', 'app', 'api', 'admin', 'portal', 'dashboard', 'staging', 'dev', 'test']
+  let parts = domain.split('.')
+  
+  // Remove subdomain prefix if present
+  if (parts.length > 0 && subdomainPrefixes.includes(parts[0].toLowerCase())) {
+    parts = parts.slice(1)
+  }
+  
+  if (parts.length === 0) return ''
+  
+  // If domain has 2 or fewer parts, return the main part
+  if (parts.length <= 2) {
+    // If it's a 2-part domain like "example.com", return just "example"
+    if (parts.length === 2) {
+      return parts[0]
+    }
+    return parts[0] || domain
+  }
+  
+  // For domains with 3+ parts, check if last 2 parts form a country TLD
+  // Common country TLDs: .co.uk, .com.mx, .com.au, .co.za, etc.
+  const lastTwo = parts.slice(-2).join('.')
+  const countryTLDs = ['co.uk', 'com.mx', 'com.au', 'co.za', 'com.br', 'com.ar', 'co.nz', 'com.co']
+  
+  if (countryTLDs.includes(lastTwo.toLowerCase())) {
+    // Remove last 2 parts (country TLD), return the main domain part
+    // e.g., "subdomain.example.com.mx" -> ["subdomain", "example"] -> "example"
+    const mainParts = parts.slice(0, -2)
+    return mainParts.length > 0 ? mainParts[mainParts.length - 1] : parts[0]
+  }
+  
+  // Otherwise, remove just the last part (standard TLD like .com, .org)
+  // Return the main domain part (second to last if there are subdomains)
+  // e.g., "subdomain.example.com" -> ["subdomain", "example"] -> "example"
+  const mainParts = parts.slice(0, -1)
+  return mainParts.length > 0 ? mainParts[mainParts.length - 1] : parts[0]
+}
+
+// Helper function to generate subdomain value (just the subdomain part, not full URL)
 function generateSubdomainFromWebsite(websiteUrl: string): string {
   const domain = extractDomainFromWebsite(websiteUrl)
   if (!domain) return ''
-  const slug = generateSlug(domain)
-  return slug ? `${slug}.app.farohq.com` : ''
+  
+  // Remove TLD and subdomain to get just the main domain
+  const hostname = removeTLDFromDomain(domain)
+  if (!hostname) return ''
+  
+  // Generate slug from hostname (without TLD and subdomain)
+  return generateSlug(hostname)
 }
 
 // Helper function to generate subdomain from agency name
 function generateSubdomainFromName(agencyName: string): string {
-  const slug = generateSlug(agencyName)
-  return slug ? `${slug}.app.farohq.com` : ''
+  return generateSlug(agencyName)
 }
 
 export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) {
@@ -70,7 +122,8 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
   const [isUploading, setIsUploading] = useState(false)
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null)
   const [checkingSlug, setCheckingSlug] = useState(false)
-  const [suggestedSubdomain, setSuggestedSubdomain] = useState<string>('')
+  const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null)
+  const [checkingSubdomain, setCheckingSubdomain] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -86,6 +139,7 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
       slug: '',
       website: '',
       brandColor: '#2563eb',
+      subdomain: '',
     },
   })
 
@@ -93,6 +147,7 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
   const slug = watch('slug')
   const website = watch('website')
   const brandColor = watch('brandColor')
+  const subdomain = watch('subdomain')
 
   // Auto-generate slug from agency name
   useEffect(() => {
@@ -115,18 +170,18 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
     }
   }, [agencyName, slug])
 
-  // Generate subdomain suggestion
+  // Auto-generate subdomain suggestion
   useEffect(() => {
-    if (website) {
-      const subdomain = generateSubdomainFromWebsite(website)
-      setSuggestedSubdomain(subdomain)
-    } else if (agencyName) {
-      const subdomain = generateSubdomainFromName(agencyName)
-      setSuggestedSubdomain(subdomain)
-    } else {
-      setSuggestedSubdomain('')
+    if (!subdomain) { // Only auto-generate if user hasn't edited it
+      if (website) {
+        const suggested = generateSubdomainFromWebsite(website)
+        setValue('subdomain', suggested, { shouldValidate: false })
+      } else if (agencyName) {
+        const suggested = generateSubdomainFromName(agencyName)
+        setValue('subdomain', suggested, { shouldValidate: false })
+      }
     }
-  }, [website, agencyName])
+  }, [website, agencyName, subdomain, setValue])
 
   // Check slug availability (debounced)
   useEffect(() => {
@@ -142,6 +197,20 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
     return () => clearTimeout(timeoutId)
   }, [slug])
 
+  // Check subdomain availability (debounced)
+  useEffect(() => {
+    if (!subdomain || subdomain.length < 3) {
+      setSubdomainAvailable(null)
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      checkSubdomainAvailability(subdomain)
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+  }, [subdomain])
+
   const checkSlugAvailability = async (slugToCheck: string) => {
     setCheckingSlug(true)
     try {
@@ -153,10 +222,30 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
         setSlugAvailable(null)
       }
     } catch (error) {
-      console.error('Failed to check slug availability:', error)
+      safeLogError('Failed to check slug availability', error)
       setSlugAvailable(null)
     } finally {
       setCheckingSlug(false)
+    }
+  }
+
+  const checkSubdomainAvailability = async (subdomainToCheck: string) => {
+    setCheckingSubdomain(true)
+    try {
+      // Use the same validation endpoint as slug, or create a separate one
+      // For now, we'll use validate-slug since subdomain validation might be similar
+      const response = await fetch(`/api/v1/tenants/validate-slug?slug=${encodeURIComponent(subdomainToCheck)}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSubdomainAvailable(data.available)
+      } else {
+        setSubdomainAvailable(null)
+      }
+    } catch (error) {
+      safeLogError('Failed to check subdomain availability', error)
+      setSubdomainAvailable(null)
+    } finally {
+      setCheckingSubdomain(false)
     }
   }
 
@@ -196,10 +285,16 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
       return
     }
 
+    // Validate subdomain availability
+    if (formData.subdomain && subdomainAvailable === false) {
+      alert('This subdomain is already taken. Please choose another.')
+      return
+    }
+
     try {
       setIsUploading(true)
 
-      // Create tenant first
+      // Step 1: Create tenant first (we need tenantId for logo upload)
       const response = await fetch('/api/v1/tenants/onboard', {
         method: 'POST',
         headers: {
@@ -211,7 +306,7 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
           slug: formData.slug,
           website: formData.website || '',
           primary_color: formData.brandColor,
-          logo_url: '', // Logo upload will be handled separately if needed
+          logo_url: '', // Will be updated after logo upload
         }),
       })
 
@@ -222,14 +317,83 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
       }
 
       const tenantData = await response.json()
+      const tenantId = tenantData.id
 
-      // Pass data to parent component (onboarding page will handle success screen)
+      // Step 2: Upload logo if provided
+      let logoUrl = ''
+      if (logoFile) {
+        try {
+          const logoFormData = new FormData()
+          logoFormData.append('file', logoFile)
+          logoFormData.append('asset', 'logo')
+          logoFormData.append('agency_id', tenantId)
+
+          const uploadResponse = await fetch('/api/v1/files/upload', {
+            method: 'POST',
+            headers: {
+              'X-Tenant-ID': tenantId,
+            },
+            credentials: 'include',
+            body: logoFormData,
+          })
+
+          if (uploadResponse.ok) {
+            const uploadData = await uploadResponse.json()
+            logoUrl = uploadData.public_url || uploadData.url || ''
+          } else {
+            safeLogWarn('Failed to upload logo, continuing without logo')
+          }
+        } catch (uploadError) {
+          safeLogError('Failed to upload logo', uploadError)
+          // Continue without logo
+        }
+      }
+
+      // Step 3: Create brand record with all branding data (use POST for new brands)
+      try {
+        // Backend expects: logo_url, primary_color, secondary_color, website, favicon_url (optional)
+        // Backend gets agency_id from X-Tenant-ID header, not from body
+        // Database constraint requires secondary_color to be valid hex color or NULL
+        // Use primary color as default for secondary color (can be changed later in settings)
+        const brandPayload = {
+          primary_color: formData.brandColor,
+          secondary_color: formData.brandColor, // Use primary color as default (database requires valid hex or NULL)
+          logo_url: logoUrl || '',
+          website: formData.website || '',
+          favicon_url: '', // Optional, can be added later
+        }
+        // Ensure tenantId is a clean string (no extra spaces or duplicates)
+        const cleanTenantId = tenantId?.trim();
+        const brandResponse = await fetch('/api/v1/brands', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': cleanTenantId,
+          },
+          credentials: 'include',
+          body: JSON.stringify(brandPayload),
+        })
+
+        if (!brandResponse.ok) {
+          const errorText = await brandResponse.text().catch(() => 'Unknown error')
+          safeLogWarn('Failed to create brand record', { errorText })
+          // Continue anyway - brand can be created/updated later in settings
+        }
+      } catch (brandError) {
+        safeLogError('Failed to create brand', brandError)
+        // Continue anyway - brand can be created later
+      }
+
+      // Pass data to parent component
+      const fullSubdomain = formData.subdomain ? `${formData.subdomain}.app.farohq.com` : undefined
       onComplete({
         ...formData,
-        logoUrl: logoPreview || undefined, // Pass preview URL for display (actual upload can be done later)
+        logoUrl: logoUrl || logoPreview || undefined,
+        tenantId: tenantId,
+        subdomain: fullSubdomain,
       })
     } catch (error) {
-      console.error('Failed to create agency:', error)
+      safeLogError('Failed to create agency', error)
       alert('Failed to create agency. Please try again.')
     } finally {
       setIsUploading(false)
@@ -304,16 +468,34 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
             </p>
           </div>
 
-          {/* Subdomain Suggestion */}
-          {suggestedSubdomain && (
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-sm font-medium mb-1">Your Portal URL:</p>
-              <p className="text-lg font-semibold">{suggestedSubdomain}</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                This subdomain will be available for your Starter/Growth tier portal.
-              </p>
+          {/* Subdomain */}
+          <div>
+            <Label htmlFor="subdomain">Portal Subdomain *</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="subdomain"
+                placeholder="your-agency"
+                {...register('subdomain')}
+                className={errors.subdomain || subdomainAvailable === false ? 'border-red-500' : subdomainAvailable === true ? 'border-green-500' : ''}
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">.app.farohq.com</span>
             </div>
-          )}
+            {errors.subdomain && (
+              <p className="text-sm text-red-500 mt-1">{errors.subdomain.message}</p>
+            )}
+            {checkingSubdomain && (
+              <p className="text-sm text-muted-foreground mt-1">Checking availability...</p>
+            )}
+            {!checkingSubdomain && subdomainAvailable === false && (
+              <p className="text-sm text-red-500 mt-1">This subdomain is already taken</p>
+            )}
+            {!checkingSubdomain && subdomainAvailable === true && (
+              <p className="text-sm text-green-500 mt-1">Subdomain is available</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              Your portal will be available at: <strong>{subdomain ? `${subdomain}.app.farohq.com` : 'subdomain.app.farohq.com'}</strong>
+            </p>
+          </div>
 
           {/* Logo Upload */}
           <div>
@@ -381,7 +563,7 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
             type="submit"
             className="w-full"
             style={{ backgroundColor: brandColor }}
-            disabled={isSubmitting || isUploading || slugAvailable === false}
+            disabled={isSubmitting || isUploading || slugAvailable === false || (subdomain && subdomainAvailable === false)}
           >
             {isSubmitting || isUploading ? 'Creating...' : 'Create Agency'}
           </Button>

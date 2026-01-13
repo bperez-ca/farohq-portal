@@ -1,15 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyApiRequest } from '@/lib/server-api-client';
+import { proxyApiRequest, serverApiRequest, getClerkToken } from '@/lib/server-api-client';
 
 /**
  * Brand API endpoint that proxies to core-app backend
- * This is a public endpoint (no auth required) for brand theme resolution
+ * Supports both host-based (public) and org-based (authenticated) brand resolution
  */
 export async function GET(request: NextRequest) {
   const host = request.nextUrl.searchParams.get('host');
+  const orgId = request.nextUrl.searchParams.get('org-id') || request.nextUrl.searchParams.get('orgId');
+  const slug = request.nextUrl.searchParams.get('slug');
   
+  // If org-id or slug is provided, use authenticated org-based fetching
+  if (orgId || slug) {
+    try {
+      const token = await getClerkToken();
+      if (!token) {
+        // If no token but org requested, return default theme
+        return NextResponse.json(getDefaultTheme(request));
+      }
+
+      // Get user's organizations
+      const orgsResponse = await serverApiRequest('/api/v1/tenants/my-orgs', {
+        method: 'GET',
+        token: token,
+      });
+
+      if (!orgsResponse.ok) {
+        return NextResponse.json(getDefaultTheme(request));
+      }
+
+      const orgsData = await orgsResponse.json();
+      const orgs = orgsData.orgs || [];
+      
+      if (orgs.length === 0) {
+        return NextResponse.json(getDefaultTheme(request));
+      }
+
+      // Find the requested org
+      let activeOrg = orgs[0];
+      if (orgId) {
+        activeOrg = orgs.find((org: any) => org.id === orgId) || orgs[0];
+      } else if (slug) {
+        activeOrg = orgs.find((org: any) => org.slug === slug) || orgs[0];
+      }
+
+      // Fetch brand using tenant ID
+      const brandResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080'}/api/v1/brands`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Tenant-ID': activeOrg.id,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (brandResponse.ok) {
+        const brands = await brandResponse.json();
+        const brand = Array.isArray(brands) && brands.length > 0 ? brands[0] : brands;
+        if (brand) {
+          return NextResponse.json(brand);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to fetch brand by org, falling back to default:', error);
+    }
+  }
+  
+  // Host-based resolution (original logic)
   // Normalize host - remove port if it doesn't match current port
-  // This handles cases where host is localhost:3001 but app is on localhost:3000
   let normalizedHost = host || '';
   if (normalizedHost && normalizedHost.includes(':')) {
     const [hostname, port] = normalizedHost.split(':');

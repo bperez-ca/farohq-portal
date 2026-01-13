@@ -1,0 +1,40 @@
+export const mockAgencyStats = {
+  totalPipeline: 37,
+  needsAttention: 8,
+  avgRating: 4.4,
+  avgRatingChange: 0.2,
+  churnWatch: 2,
+}
+
+export const mockBusinesses = [
+  {
+    id: 'biz-1',
+    name: "Joe's HVAC",
+    industry: 'HVAC',
+    city: 'Austin',
+    phone: '(555) 987-6543',
+    rating: 4.2,
+    ratingChange: 0.2,
+    newLeads: 4,
+    bookedJobs: 9,
+    closedRevenue: 3200,
+    avgTicket: 225,
+    avgReplyTime: 11,
+    totalLeads: 14,
+  },
+  {
+    id: 'biz-2',
+    name: "Bella Salon",
+    industry: 'Salon',
+    city: 'Dallas',
+    phone: '(555) 234-5678',
+    rating: 4.7,
+    ratingChange: 0.1,
+    newLeads: 12,
+    bookedJobs: 18,
+    closedRevenue: 5400,
+    avgTicket: 300,
+    avgReplyTime: 8,
+    totalLeads: 25,
+  },
+]

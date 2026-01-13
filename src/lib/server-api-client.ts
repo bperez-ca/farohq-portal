@@ -5,6 +5,7 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { headers } from 'next/headers';
+import { safeLogError } from './log-sanitizer';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
 
@@ -18,7 +19,7 @@ export async function getClerkToken(): Promise<string | null> {
     const token = await getToken();
     return token;
   } catch (error) {
-    console.error('Failed to get Clerk token:', error);
+    safeLogError('Failed to get Clerk token', error);
     return null;
   }
 }
@@ -103,16 +104,32 @@ export async function proxyApiRequest(
   const searchParams = urlObj.searchParams.toString();
   const fullUrl = searchParams ? `${url}?${searchParams}` : url;
 
+  // Collect headers to forward (avoid duplicates by checking case-insensitively)
+  const forwardedHeaders: Record<string, string> = {};
+  const headersToForward = ['content-type', 'x-tenant-id', 'x-request-id'];
+  const seenHeaders = new Set<string>();
+  
+  // Forward relevant headers (avoid duplicates by using first occurrence only)
+  for (const [key, value] of request.headers.entries()) {
+    const lowerKey = key.toLowerCase();
+    if (headersToForward.includes(lowerKey) && !seenHeaders.has(lowerKey)) {
+      let cleanedValue = value;
+      // If X-Tenant-ID header value contains comma (duplicated), take only first part
+      if (lowerKey === 'x-tenant-id' && value.includes(',')) {
+        cleanedValue = value.split(',')[0].trim();
+      }
+      // Use original header name (preserve casing)
+      forwardedHeaders[key] = cleanedValue;
+      seenHeaders.add(lowerKey);
+    }
+  }
+  
+
   const response = await fetch(fullUrl, {
     method: request.method,
     headers: {
       ...createHeaders(token),
-      // Forward relevant headers
-      ...Object.fromEntries(
-        Array.from(request.headers.entries()).filter(([key]) =>
-          ['content-type', 'x-tenant-id', 'x-request-id'].includes(key.toLowerCase())
-        )
-      ),
+      ...forwardedHeaders,
     },
     body,
   });

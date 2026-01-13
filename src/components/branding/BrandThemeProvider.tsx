@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import axios from 'axios'
 
@@ -8,7 +8,7 @@ interface BrandThemeProviderProps {
   children: React.ReactNode
 }
 
-interface BrandTheme {
+export interface BrandTheme {
   primary_color?: string
   secondary_color?: string
   logo_url?: string
@@ -17,7 +17,20 @@ interface BrandTheme {
   can_hide_powered_by?: boolean
   can_configure_domain?: boolean
   tier?: string
+  tenant_name?: string
 }
+
+interface BrandThemeContextType {
+  theme: BrandTheme | null
+  loading: boolean
+}
+
+const BrandThemeContext = createContext<BrandThemeContextType>({
+  theme: null,
+  loading: true,
+})
+
+export const useBrandTheme = () => useContext(BrandThemeContext)
 
 /**
  * BrandThemeProvider enhances ThemeProvider by:
@@ -136,7 +149,7 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
   const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 
   useEffect(() => {
-    // Fetch brand theme based on current host (with caching)
+    // Fetch brand theme based on tenantId (authenticated) or host (public)
     const fetchBrandTheme = async () => {
       // Check cache TTL
       const now = Date.now()
@@ -148,10 +161,23 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
 
       try {
         setLoading(true)
-        const host = window.location.host
-        const response = await axios.get(`/api/v1/brand/by-host?host=${host}`, {
-          withCredentials: true,
-        })
+        
+        // Try to get tenantId from localStorage (set by authenticated users)
+        const tenantId = typeof window !== 'undefined' ? localStorage.getItem('farohq_active_org_id') : null
+        
+        let response
+        if (tenantId) {
+          // For authenticated users, use tenantId-based fetching
+          response = await axios.get(`/api/v1/brand/by-host?org-id=${encodeURIComponent(tenantId)}`, {
+            withCredentials: true,
+          })
+        } else {
+          // For public/unauthenticated access, use host-based fetching
+          const host = window.location.host
+          response = await axios.get(`/api/v1/brand/by-host?host=${host}`, {
+            withCredentials: true,
+          })
+        }
 
         if (response.data) {
           setTheme(response.data)
@@ -170,9 +196,9 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
     fetchBrandTheme()
   }, [pathname]) // Re-fetch when pathname changes (different subdomain/domain)
 
-  if (loading) {
-    return <>{children}</> // Render children while loading theme
-  }
-
-  return <>{children}</>
+  return (
+    <BrandThemeContext.Provider value={{ theme, loading }}>
+      {children}
+    </BrandThemeContext.Provider>
+  )
 }

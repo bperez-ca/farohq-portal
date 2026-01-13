@@ -174,6 +174,71 @@ export default function BrandingSettingsPage() {
           console.error('Failed to load tenant data:', tenantError)
           // Don't fail the whole page if tenant data fails to load
         }
+      } else {
+        // No brand exists yet - try to get tenant info to at least show tenant fields
+        try {
+          // Get user's organizations to get tenant ID
+          const orgsResponse = await axios.get('/api/v1/tenants/my-orgs', {
+            withCredentials: true,
+          })
+          
+          if (orgsResponse.data && orgsResponse.data.orgs && orgsResponse.data.orgs.length > 0) {
+            const activeOrg = orgsResponse.data.orgs[0]
+            
+            // Use org data directly (my-orgs already returns name, slug, etc.)
+            // Try to get more detailed tenant info, but fallback to org data if it fails
+            if (activeOrg.name && activeOrg.slug) {
+              setTenantData({
+                id: activeOrg.id,
+                name: activeOrg.name,
+                slug: activeOrg.slug,
+                status: activeOrg.status || 'active',
+                created_at: activeOrg.created_at || new Date().toISOString(),
+              })
+              setValue('tenantName', activeOrg.name)
+              setValue('tenantSlug', activeOrg.slug)
+            }
+            
+            // Try to get more detailed tenant info (optional - we already have the basics)
+            try {
+              const tenantResponse = await axios.get(`/api/v1/tenants/${activeOrg.id}`, {
+                withCredentials: true,
+              })
+              
+              if (tenantResponse.data) {
+                const tenant = tenantResponse.data
+                setTenantData(tenant)
+                setValue('tenantName', tenant.name || activeOrg.name || '')
+                setValue('tenantSlug', tenant.slug || activeOrg.slug || '')
+              }
+            } catch (tenantError: any) {
+              // Silently fail - we already have org data
+              console.warn('Could not fetch detailed tenant data, using org data:', tenantError?.response?.status)
+            }
+            
+            // Create a minimal brand data structure for the form
+            setBrandData({
+              agency_id: activeOrg.id,
+              domain: null,
+              subdomain: null,
+              domain_type: null,
+              website: null,
+              logo_url: null,
+              favicon_url: null,
+              primary_color: '#2563eb',
+              secondary_color: null,
+              hide_powered_by: false,
+              can_hide_powered_by: false,
+              can_configure_domain: false,
+              ssl_status: null,
+            })
+          } else {
+            setError('No organizations found. Please ensure you are part of an organization.')
+          }
+        } catch (orgError) {
+          console.error('Failed to load org/tenant data:', orgError)
+          setError('No brand or organization found. Please ensure you are part of an organization.')
+        }
       }
     } catch (error: any) {
       console.error('Failed to load brand data:', error)
@@ -188,15 +253,45 @@ export default function BrandingSettingsPage() {
 
     try {
       setIsUploading(true)
-      // Get presigned URL
+      
+      // Get sign response to determine if we should use local upload or GCS
       const signResponse = await axios.post('/api/v1/files/sign', {
         agency_id: brandData.agency_id,
         asset: assetType,
       }, {
         withCredentials: true,
+        headers: {
+          'X-Tenant-ID': brandData.agency_id, // Ensure tenant context
+        },
       })
 
+      // Check if we should use local upload (development mode)
+      if (signResponse.data.use_local_upload) {
+        // Use local upload endpoint
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('asset', assetType)
+        formData.append('agency_id', brandData.agency_id)
+
+        const uploadResponse = await axios.post('/api/v1/files/upload', formData, {
+          withCredentials: true,
+          headers: {
+            'X-Tenant-ID': brandData.agency_id,
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+
+        // Return the public URL (relative path for local, full URL for production)
+        const publicUrl = uploadResponse.data.public_url || uploadResponse.data.url
+        return publicUrl.startsWith('http') ? publicUrl : `${window.location.origin}${publicUrl}`
+      }
+
+      // Production: Use GCS/S3 presigned URL
       const { url: presignedUrl, key, headers: presignedHeaders } = signResponse.data
+
+      if (!presignedUrl) {
+        throw new Error('No presigned URL returned from server')
+      }
 
       // Upload file directly to GCS/S3
       await axios.put(presignedUrl, file, {
@@ -208,9 +303,17 @@ export default function BrandingSettingsPage() {
 
       // Construct public URL from key
       // For GCS: https://storage.googleapis.com/{bucket}/{key}
+      // For Cloudflare CDN: https://cdn.yourdomain.com/{key}
       const bucket = process.env.NEXT_PUBLIC_GCS_BUCKET_NAME || 'farohq-files'
-      const publicUrl = `https://storage.googleapis.com/${bucket}/${key}`
-      return publicUrl
+      const cdnDomain = process.env.NEXT_PUBLIC_CDN_DOMAIN
+      
+      if (cdnDomain) {
+        // Use Cloudflare CDN if configured
+        return `https://${cdnDomain}/${key}`
+      } else {
+        // Use GCS direct URL
+        return `https://storage.googleapis.com/${bucket}/${key}`
+      }
     } catch (error) {
       console.error(`Failed to upload ${assetType}:`, error)
       throw error
@@ -275,19 +378,56 @@ export default function BrandingSettingsPage() {
         updatePayload.domain = formData.domain || null
       }
 
-      // Update brand
-      const updateResponse = await axios.put(`/api/v1/brands?brandId=${brandData.agency_id}`, updatePayload, {
-        withCredentials: true,
-      })
+      // Update or create brand
+      let brandResponse
+      try {
+        // Try to update first
+        brandResponse = await axios.put(`/api/v1/brands?brandId=${brandData.agency_id}`, updatePayload, {
+          withCredentials: true,
+          headers: {
+            'X-Tenant-ID': brandData.agency_id, // Ensure tenant context
+          },
+        })
 
-      // Handle tier-related errors (403 Forbidden)
-      if (updateResponse.status === 403) {
-        const errorData = updateResponse.data
-        setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
-        return
+        // Handle tier-related errors (403 Forbidden)
+        if (brandResponse.status === 403) {
+          const errorData = brandResponse.data
+          setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
+          return
+        }
+
+        setBrandData(brandResponse.data)
+      } catch (updateError: any) {
+        // If brand doesn't exist (404), create it
+        if (updateError.response?.status === 404) {
+          try {
+            // Create brand with the same payload
+            brandResponse = await axios.post('/api/v1/brands', updatePayload, {
+              withCredentials: true,
+              headers: {
+                'X-Tenant-ID': brandData.agency_id, // Ensure tenant context
+              },
+            })
+
+            if (brandResponse.status === 201 || brandResponse.status === 200) {
+              setBrandData(brandResponse.data)
+            } else {
+              throw new Error('Failed to create brand')
+            }
+          } catch (createError: any) {
+            console.error('Failed to create brand:', createError)
+            const createErrorMessage = createError.response?.data?.error || 
+                                     createError.response?.data?.message ||
+                                     createError.message ||
+                                     'Failed to create brand. Please try again.'
+            setError(createErrorMessage)
+            return
+          }
+        } else {
+          // Re-throw other errors
+          throw updateError
+        }
       }
-
-      setBrandData(updateResponse.data)
 
       // Update tenant information if changed
       if (tenantData && (formData.tenantName !== tenantData.name || formData.tenantSlug !== tenantData.slug)) {
@@ -326,17 +466,36 @@ export default function BrandingSettingsPage() {
       setTimeout(() => setSuccess(false), 3000)
     } catch (error: any) {
       console.error('Failed to update brand:', error)
-      const errorMessage = error.response?.data?.error || 
-                          error.response?.data?.message ||
-                          error.message ||
-                          'Failed to update branding settings. Please try again.'
-      setError(errorMessage)
-
-      // Handle tier-related errors
-      if (error.response?.status === 403) {
-        const errorData = error.response?.data
-        setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
+      
+      // Handle different error response formats
+      let errorMessage = 'Failed to update branding settings. Please try again.'
+      
+      if (error.response) {
+        // Try to parse error response
+        if (error.response.data) {
+          if (typeof error.response.data === 'string') {
+            // Plain text error response
+            errorMessage = error.response.data
+          } else if (error.response.data.error) {
+            errorMessage = error.response.data.error
+          } else if (error.response.data.message) {
+            errorMessage = error.response.data.message
+          } else if (error.response.data.details) {
+            errorMessage = error.response.data.details
+          }
+        }
+        
+        // Handle tier-related errors
+        if (error.response.status === 403) {
+          errorMessage = errorMessage || 'This feature is not available for your tier. Please upgrade.'
+        } else if (error.response.status === 400) {
+          errorMessage = errorMessage || 'Invalid request. Please check your input.'
+        }
+      } else if (error.message) {
+        errorMessage = error.message
       }
+      
+      setError(errorMessage)
     } finally {
       setSaving(false)
     }

@@ -10,12 +10,13 @@ export const useTheme = () => {
         // Set hydrated flag
         setIsHydrated(true);
         
-        // Initialize theme from localStorage or system preference
+        // Initialize theme from localStorage, default to light
         const stored = localStorage.getItem('theme') as Theme;
         if (stored) {
             setTheme(stored);
-        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            setTheme('dark');
+        } else {
+            // Default to light mode
+            setTheme('light');
         }
     }, []);
 

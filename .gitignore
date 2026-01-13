@@ -52,3 +52,6 @@ error-context.md
 ../lvos/
 ../farohq-landing-mocks/
 ../faro-mocks/
+
+# Local file uploads (development only)
+/public/uploads/

@@ -12,6 +12,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1)
   const [agencyName, setAgencyName] = useState('')
   const [subdomain, setSubdomain] = useState<string | undefined>(undefined)
+  const [tenantId, setTenantId] = useState<string | undefined>(undefined)
 
   // Check if user already has orgs - if yes, redirect to dashboard
   useEffect(() => {
@@ -29,7 +30,7 @@ export default function OnboardingPage() {
           const data = await response.json()
           if (data.count > 0) {
             // User already has orgs, redirect to dashboard
-            router.push('/dashboard')
+            router.push('/agency/dashboard')
           }
         }
       } catch (error) {
@@ -47,17 +48,13 @@ export default function OnboardingPage() {
     website?: string
     brandColor: string
     logoUrl?: string
+    tenantId?: string
+    subdomain?: string
   }) => {
     setAgencyName(data.agencyName)
-    // Generate subdomain suggestion (same logic as in form)
-    if (data.website) {
-      const domain = data.website.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split(':')[0]
-      const slug = domain.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-      setSubdomain(`${slug}.app.farohq.com`)
-    } else if (data.agencyName) {
-      const slug = data.slug || data.agencyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-      setSubdomain(`${slug}.app.farohq.com`)
-    }
+    setTenantId(data.tenantId)
+    // Use subdomain from form data if provided
+    setSubdomain(data.subdomain)
     setStep(2)
   }
 
@@ -81,6 +78,7 @@ export default function OnboardingPage() {
           <OnboardingSuccess 
             agencyName={agencyName}
             subdomain={subdomain}
+            tenantId={tenantId}
           />
         )}
       </div>
