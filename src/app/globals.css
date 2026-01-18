@@ -123,7 +123,12 @@
     background-color: var(--brand-color) !important;
   }
 
-  .bg-brand:hover {
+  .bg-brand:hover,
+  .hover\:bg-brand:hover {
+    background-color: var(--brand-color-hover) !important;
+  }
+
+  .bg-brand-hover {
     background-color: var(--brand-color-hover) !important;
   }
 
@@ -133,5 +138,40 @@
 
   .bg-brand-accent {
     background-color: var(--brand-accent) !important;
+  }
+
+  /* Consistent button styling - rounded rectangles across the application */
+  /* Apply to all buttons by default */
+  button,
+  .btn,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"] {
+    border-radius: var(--radius, 0.5rem) !important;
+  }
+
+  /* Override any circular or pill-shaped button styles */
+  /* Exclude loading spinners and decorative elements */
+  button[class*="rounded-full"]:not(.animate-spin):not([class*="spinner"]),
+  .btn[class*="rounded-full"]:not(.animate-spin):not([class*="spinner"]),
+  button[class*="rounded-3xl"]:not(.animate-spin):not([class*="spinner"]),
+  .btn[class*="rounded-3xl"]:not(.animate-spin):not([class*="spinner"]) {
+    border-radius: var(--radius, 0.5rem) !important;
+  }
+
+  /* Ensure consistent minimum sizing for buttons */
+  button:not([class*="size-icon"]):not([class*="h-"]):not([class*="w-"]),
+  .btn:not([class*="size-icon"]):not([class*="h-"]):not([class*="w-"]) {
+    min-height: 2.5rem;
+    min-width: auto;
+  }
+
+  /* Icon-only buttons should be square with rounded corners */
+  button[class*="size-icon"],
+  button[class*="w-8"][class*="h-8"],
+  button[class*="w-10"][class*="h-10"],
+  button[class*="w-12"][class*="h-12"] {
+    border-radius: var(--radius, 0.5rem) !important;
   }
 }

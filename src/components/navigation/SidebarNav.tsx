@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building2, Users, FileText, BarChart3, LayoutDashboard, Settings, ChevronLeft, ChevronRight, Moon, Sun } from 'lucide-react'
+import { Building2, Users, FileText, BarChart3, LayoutDashboard, Settings, ChevronLeft, ChevronRight, Moon, Sun, Palette, Mail, ChevronDown, ChevronUp } from 'lucide-react'
 import { useSidebar } from './SidebarContext'
 import { NavItem } from './NavItem'
 import { UserProfileSection } from './UserProfileSection'
@@ -11,6 +11,8 @@ import { Button } from '@farohq/ui'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/app/hooks/useTheme'
 import { useEffect, useState } from 'react'
+import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
+import { BrandLogoSimple } from '@/components/BrandLogo'
 // Using img tag instead of Next Image for external URLs
 
 const navigationItems = [
@@ -19,7 +21,11 @@ const navigationItems = [
   { href: '/agency/diagnostics', icon: FileText, label: 'Diagnostics' },
   { href: '/agency/kpis', icon: BarChart3, label: 'KPIs' },
   { href: '/business/dashboard', icon: LayoutDashboard, label: 'Business' },
-  { href: '/agency/settings/branding', icon: Settings, label: 'Settings' },
+]
+
+const settingsItems = [
+  { href: '/agency/settings/branding', icon: Palette, label: 'Branding' },
+  { href: '/agency/settings/invites', icon: Mail, label: 'Invites' },
 ]
 
 export function SidebarNav() {
@@ -27,6 +33,7 @@ export function SidebarNav() {
   const { collapsed, toggleCollapsed } = useSidebar()
   const { user, isLoaded: userLoaded } = useUser()
   const { theme, toggleTheme } = useTheme()
+  const { theme: brandTheme } = useBrandTheme()
   const pathname = usePathname()
   const [orgInfo, setOrgInfo] = useState<{ name: string; logoUrl?: string } | null>({ name: 'FARO' }) // Initialize with default
   const [isLoadingOrgInfo, setIsLoadingOrgInfo] = useState(false) // Start as false since we have default
@@ -84,16 +91,17 @@ export function SidebarNav() {
             }
           }
         } else {
-          // On error, keep default FARO so sidebar still shows
+          // Failed to retrieve tenant ID - hide sidebar
+          // This includes 404 (user not found) and other errors
           if (!cancelled) {
-            setOrgInfo({ name: 'FARO' })
+            setOrgInfo(null)
           }
         }
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to fetch org info:', error)
-          // Default to FARO if fetch fails so sidebar still shows
-          setOrgInfo({ name: 'FARO' })
+          // Failed to retrieve tenant ID - hide sidebar
+          setOrgInfo(null)
         }
       } finally {
         if (!cancelled) {
@@ -129,12 +137,33 @@ export function SidebarNav() {
   // Use default if still loading or orgInfo is null
   const displayOrgInfo = orgInfo || { name: 'FARO' }
 
-  const brandColor = '#2563eb' // Default brand color, can be enhanced later
-  const logoUrl = displayOrgInfo.logoUrl
-  const tenantName = displayOrgInfo.name
+  // Get brand colors and logo from BrandThemeProvider (preferred) or fallback to orgInfo
+  const brandColor = brandTheme?.primary_color || '#2563eb'
+  const logoUrl = brandTheme?.logo_url || displayOrgInfo.logoUrl
+  const tenantName = brandTheme?.tenant_name || displayOrgInfo.name
 
   // Get first letter for fallback logo
   const logoInitial = tenantName.charAt(0).toUpperCase()
+
+  // Calculate luminance to determine if color is dark (for text contrast)
+  const getLuminance = (hex: string): number => {
+    const rgb = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
+    if (!rgb) return 0.5 // Default to medium if invalid
+    
+    const r = parseInt(rgb[1], 16) / 255
+    const g = parseInt(rgb[2], 16) / 255
+    const b = parseInt(rgb[3], 16) / 255
+    
+    // Relative luminance formula (WCAG)
+    const [rs, gs, bs] = [r, g, b].map(val => {
+      return val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4)
+    })
+    
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs
+  }
+
+  const isDarkColor = brandColor ? getLuminance(brandColor) < 0.5 : false
+  const textColor = isDarkColor ? '#ffffff' : undefined // White text for dark backgrounds
 
   // Function to split business name with line break based on length
   const formatBusinessName = (name: string): JSX.Element | string => {
@@ -177,29 +206,41 @@ export function SidebarNav() {
       )}
     >
       {/* Header with logo and toggle */}
-      <div className="flex items-center justify-between p-4 border-b border-black/5 dark:border-white/10">
+      <div 
+        className="flex items-center justify-between p-4 border-b border-black/5 dark:border-white/10"
+        style={{ 
+          backgroundColor: brandColor || undefined,
+          color: textColor,
+        }}
+      >
         <Link
           href="/agency/dashboard"
           className={cn('flex items-center gap-3', collapsed && 'justify-center w-full')}
+          style={{ color: textColor }}
         >
           {logoUrl ? (
-            <div className="relative w-8 h-8 flex-shrink-0">
-              <img
-                src={logoUrl}
-                alt={tenantName}
-                className="w-full h-full object-contain"
-              />
-            </div>
+            <BrandLogoSimple
+              logoUrl={logoUrl}
+              alt={tenantName}
+              className="w-8 h-8 flex-shrink-0 object-contain"
+              fallback="/logo.svg"
+            />
           ) : (
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-medium text-sm flex-shrink-0 shadow-sm"
-              style={{ backgroundColor: brandColor }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center font-medium text-sm flex-shrink-0 shadow-sm"
+              style={{ 
+                backgroundColor: isDarkColor ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+                color: textColor || '#ffffff',
+              }}
             >
               {logoInitial}
             </div>
           )}
           {!collapsed && (
-            <span className="font-medium text-lg tracking-tight leading-tight">
+            <span 
+              className="font-medium text-lg tracking-tight leading-tight"
+              style={{ color: textColor || undefined }}
+            >
               {formatBusinessName(tenantName)}
             </span>
           )}
@@ -210,6 +251,7 @@ export function SidebarNav() {
             size="icon"
             onClick={toggleCollapsed}
             className="h-8 w-8"
+            style={{ color: textColor }}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -227,6 +269,9 @@ export function SidebarNav() {
             collapsed={collapsed}
           />
         ))}
+        
+        {/* Settings with submenu */}
+        <SettingsSubmenu collapsed={collapsed} pathname={pathname} />
       </nav>
 
       {/* Theme toggle */}
@@ -266,4 +311,118 @@ export function SidebarNav() {
       </div>
     </aside>
   )
+}
+
+// Settings submenu component
+function SettingsSubmenu({ collapsed, pathname }: { collapsed: boolean; pathname: string }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const { theme } = useBrandTheme()
+  const brandColor = theme?.primary_color || '#2563eb'
+  const activeBgColor = `${brandColor}15`
+  const isSettingsPage = pathname?.startsWith('/agency/settings')
+  
+  // Auto-expand if we're on a settings page
+  useEffect(() => {
+    if (isSettingsPage && !collapsed) {
+      setIsOpen(true)
+    }
+  }, [isSettingsPage, collapsed])
+
+  const content = (
+    <div className="space-y-1">
+      {/* Settings parent button */}
+      <button
+        onClick={() => !collapsed && setIsOpen(!isOpen)}
+        className={cn(
+          'flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all tracking-tight w-full',
+          isSettingsPage
+            ? 'text-foreground'
+            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+          collapsed && 'justify-center'
+        )}
+        style={
+          isSettingsPage && !collapsed
+            ? {
+                backgroundColor: activeBgColor,
+                color: brandColor,
+              }
+            : {}
+        }
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <Settings className="w-5 h-5 flex-shrink-0" style={isSettingsPage ? { color: brandColor } : {}} />
+          {!collapsed && <span className="truncate">Settings</span>}
+        </div>
+        {!collapsed && (
+          <div className="flex-shrink-0">
+            {isOpen ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* Settings submenu items */}
+      {!collapsed && isOpen && (
+        <div className="ml-4 pl-4 border-l border-border space-y-1">
+          {settingsItems.map((item) => {
+            const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all',
+                  isActive
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                )}
+                style={
+                  isActive
+                    ? {
+                        backgroundColor: activeBgColor,
+                        color: brandColor,
+                      }
+                    : {}
+                }
+              >
+                <item.icon className="w-4 h-4 flex-shrink-0" style={isActive ? { color: brandColor } : {}} />
+                <span>{item.label}</span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+
+  if (collapsed) {
+    return (
+      <div className="space-y-1">
+        <Link
+          href="/agency/settings/branding"
+          className={cn(
+            'flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+            isSettingsPage
+              ? 'text-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+          )}
+          style={
+            isSettingsPage
+              ? {
+                  backgroundColor: activeBgColor,
+                  color: brandColor,
+                }
+              : {}
+          }
+        >
+          <Settings className="w-5 h-5" style={isSettingsPage ? { color: brandColor } : {}} />
+        </Link>
+      </div>
+    )
+  }
+
+  return content
 }

@@ -10,11 +10,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar()
   const pathname = usePathname()
 
-  // Don't apply sidebar layout to auth pages or root
+  // Don't apply sidebar layout to auth pages, invite pages, or root
   if (
     pathname.startsWith('/signin') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
+    pathname.startsWith('/invites/accept') ||
     pathname === '/'
   ) {
     return <>{children}</>

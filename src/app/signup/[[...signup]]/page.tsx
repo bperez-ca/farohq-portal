@@ -65,9 +65,11 @@ function UserSyncHandler() {
   return null
 }
 
+import { AuthLayout } from '@/components/auth/AuthLayout'
+
 export default function SignUpPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <AuthLayout title="Sign Up">
       <SignUp
         appearance={{
           elements: {
@@ -81,6 +83,6 @@ export default function SignUpPage() {
       />
       {/* User Sync Handler - syncs user data after signup */}
       <UserSyncHandler />
-    </div>
+    </AuthLayout>
   )
 }

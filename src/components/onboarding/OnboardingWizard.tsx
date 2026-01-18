@@ -65,7 +65,7 @@ export function OnboardingWizard() {
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                 step >= 1
-                  ? 'bg-blue-600 text-white dark:bg-blue-500'
+                  ? 'bg-brand text-white'
                   : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >
@@ -77,13 +77,13 @@ export function OnboardingWizard() {
             </div>
             <div
               className={`h-0.5 transition-colors ${
-                step >= 2 ? 'w-16 bg-blue-600 dark:bg-blue-500' : 'w-16 bg-slate-200 dark:bg-slate-700'
+                step >= 2 ? 'w-16 bg-brand' : 'w-16 bg-slate-200 dark:bg-slate-700'
               }`}
             />
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                 step >= 2
-                  ? 'bg-blue-600 text-white dark:bg-blue-500'
+                  ? 'bg-brand text-white'
                   : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >
@@ -95,13 +95,13 @@ export function OnboardingWizard() {
             </div>
             <div
               className={`h-0.5 transition-colors ${
-                step >= 3 ? 'w-16 bg-blue-600 dark:bg-blue-500' : 'w-16 bg-slate-200 dark:bg-slate-700'
+                step >= 3 ? 'w-16 bg-brand' : 'w-16 bg-slate-200 dark:bg-slate-700'
               }`}
             />
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                 step >= 3
-                  ? 'bg-blue-600 text-white dark:bg-blue-500'
+                  ? 'bg-brand text-white'
                   : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >

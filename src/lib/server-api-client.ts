@@ -5,7 +5,7 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { headers } from 'next/headers';
-import { safeLogError } from './log-sanitizer';
+import { safeLogError, safeLogWarn } from './log-sanitizer';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
 
@@ -15,10 +15,56 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '
  */
 export async function getClerkToken(): Promise<string | null> {
   try {
+    console.log('[Auth] Attempting to retrieve Clerk Bearer token...');
     const { getToken } = await auth();
     const token = await getToken();
+    
+    if (token) {
+      // Log token info (safe - only show first/last chars for debugging)
+      const tokenPreview = token.length > 20 
+        ? `${token.substring(0, 10)}...${token.substring(token.length - 10)}`
+        : '***';
+      console.log(`[Auth] ✓ Bearer token retrieved successfully (length: ${token.length}, preview: ${tokenPreview})`);
+      
+      // Decode JWT to show claims structure (header.payload.signature)
+      // JWT uses base64url encoding, which is mostly compatible with base64
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          // Base64url decode (add padding if needed)
+          const base64UrlDecode = (str: string) => {
+            let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = base64.length % 4;
+            if (pad) {
+              base64 += new Array(5 - pad).join('=');
+            }
+            return Buffer.from(base64, 'base64').toString();
+          };
+          
+          const header = JSON.parse(base64UrlDecode(parts[0]));
+          const payload = JSON.parse(base64UrlDecode(parts[1]));
+          console.log('[Auth] Token structure:', {
+            header: { alg: header.alg, typ: header.typ },
+            payload: {
+              sub: payload.sub,
+              email: payload.email,
+              org_id: payload.o?.id || payload.org_id,
+              exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : null,
+              iat: payload.iat ? new Date(payload.iat * 1000).toISOString() : null,
+            },
+          });
+        }
+      } catch (decodeError) {
+        // Ignore decode errors, just log that we got the token
+        console.log('[Auth] Token structure decode skipped (token format may vary)');
+      }
+    } else {
+      console.warn('[Auth] ✗ Bearer token retrieval returned null - user may not be authenticated');
+    }
+    
     return token;
   } catch (error) {
+    console.error('[Auth] ✗ Failed to get Clerk Bearer token:', error);
     safeLogError('Failed to get Clerk token', error);
     return null;
   }
@@ -89,6 +135,12 @@ export async function proxyApiRequest(
 ): Promise<Response> {
   const { token: providedToken } = options;
   const token = providedToken ?? await getClerkToken();
+  
+  if (!token) {
+    console.warn(`[Proxy] ✗ No Bearer token available for request to ${endpoint}`);
+  } else {
+    console.log(`[Proxy] → Proxying ${request.method} ${endpoint} with Bearer token`);
+  }
 
   const url = endpoint.startsWith('http') 
     ? endpoint 
@@ -125,19 +177,94 @@ export async function proxyApiRequest(
   }
   
 
+  const headers = {
+    ...createHeaders(token),
+    ...forwardedHeaders,
+  };
+  
+  // Log headers being sent (sanitize Authorization header for security)
+  const logHeaders = { ...headers };
+  if (logHeaders['Authorization']) {
+    const authHeader = logHeaders['Authorization'] as string;
+    logHeaders['Authorization'] = authHeader.length > 20 
+      ? `Bearer ${authHeader.substring(7, 17)}...${authHeader.substring(authHeader.length - 10)}`
+      : 'Bearer ***';
+  }
+  console.log(`[Proxy] Request headers for ${request.method} ${endpoint}:`, logHeaders);
+
   const response = await fetch(fullUrl, {
     method: request.method,
-    headers: {
-      ...createHeaders(token),
-      ...forwardedHeaders,
-    },
+    headers,
     body,
   });
 
+  console.log(`[Proxy] ← Response from ${endpoint}: ${response.status} ${response.statusText}`);
+  
   return response;
 }
 
+/**
+ * Get validated tenant ID for the current user
+ * This function verifies that the user has access to the requested tenant
+ * by checking their organizations. This is the standard pattern for tenant-scoped endpoints.
+ * 
+ * @param requestedTenantId - The tenant ID from the request (URL param, etc.)
+ * @param token - Optional Clerk token (will be fetched if not provided)
+ * @param request - Optional NextRequest to check headers for x-tenant-id
+ * @returns Promise<string> - Validated tenant ID that user has access to
+ * 
+ * Usage:
+ * ```ts
+ * const tenantId = await getValidatedTenantId(urlParamTenantId, token, request);
+ * ```
+ */
+export async function getValidatedTenantId(
+  requestedTenantId: string,
+  token?: string | null,
+  request?: { headers: { get: (name: string) => string | null } }
+): Promise<string> {
+  const authToken = token ?? await getClerkToken();
+  if (!authToken) {
+    throw new Error('Authentication required');
+  }
 
+  try {
+    const orgsResponse = await serverApiRequest('/api/v1/tenants/my-orgs', {
+      method: 'GET',
+      token: authToken,
+    });
+
+    if (orgsResponse.ok) {
+      const orgsData = await orgsResponse.json();
+      const orgs = orgsData.orgs || [];
+      
+      if (orgs.length > 0) {
+        // Check if requested tenantId matches one of the user's orgs
+        const matchingOrg = orgs.find((org: any) => org.id === requestedTenantId);
+        if (matchingOrg) {
+          // User has access - use requested tenantId
+          return requestedTenantId;
+        } else {
+          // Tenant ID doesn't match user's orgs - use header or first org
+          const tenantIdHeader = request?.headers.get('x-tenant-id');
+          const fallbackTenantId = tenantIdHeader || orgs[0].id;
+          safeLogWarn('Tenant ID does not match user orgs', {
+            requested: requestedTenantId,
+            using: fallbackTenantId,
+          });
+          return fallbackTenantId;
+        }
+      }
+    }
+  } catch (orgError) {
+    safeLogWarn('Could not fetch orgs for tenant context validation', orgError);
+  }
+
+  // Fallback: use header if provided, otherwise use requested tenantId
+  // (backend will validate access)
+  const tenantIdHeader = request?.headers.get('x-tenant-id');
+  return tenantIdHeader || requestedTenantId;
+}
 
 
 

@@ -83,8 +83,7 @@ export function StatCard({
         {optionalCTA && (
           <Button
             onClick={optionalCTA.onClick}
-            style={{ backgroundColor: brandColor }}
-            className="mt-4 w-full h-10 font-medium text-sm shadow-sm hover:shadow transition-all"
+            className="mt-4 w-full h-10 font-medium text-sm shadow-sm hover:shadow transition-all bg-brand hover:bg-brand-hover"
           >
             {optionalCTA.label}
           </Button>

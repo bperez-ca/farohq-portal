@@ -12,6 +12,8 @@ const agencyTabs = [
   { href: '/agency/diagnostics', icon: FileText, label: 'Diagnostics' },
   { href: '/agency/kpis', icon: BarChart3, label: 'KPIs' },
   { href: '/agency/settings/branding', icon: Settings, label: 'Settings' },
+  // Note: On mobile, clicking Settings goes to branding page
+  // Submenu navigation can be accessed from the settings pages themselves
 ]
 
 export function BottomNavMobile() {

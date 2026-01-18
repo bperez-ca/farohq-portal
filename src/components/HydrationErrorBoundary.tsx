@@ -44,13 +44,13 @@ export class HydrationErrorBoundary extends Component<
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-background">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading...</p>
             <button
               onClick={() => this.setState({ hasError: false })}
-              className="mt-2 text-sm text-blue-600 hover:text-blue-500"
+              className="mt-2 text-sm text-brand hover:opacity-80 transition-opacity"
             >
               Retry
             </button>

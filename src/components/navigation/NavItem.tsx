@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
-// Using default brand color for now
+import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 
 interface NavItemProps {
   href: string
@@ -17,8 +17,11 @@ interface NavItemProps {
 export function NavItem({ href, icon: Icon, label, collapsed = false }: NavItemProps) {
   const pathname = usePathname()
   const isActive = pathname === href || pathname.startsWith(`${href}/`)
-
-  const brandColor = '#2563eb' // Default brand color
+  const { theme } = useBrandTheme()
+  
+  // Get brand color from theme or use default
+  const brandColor = theme?.primary_color || '#2563eb'
+  // Create semi-transparent background color (15% opacity)
   const activeBgColor = `${brandColor}15`
 
   const content = (

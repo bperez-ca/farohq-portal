@@ -8,7 +8,8 @@ import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, Car
 import { Upload, X, Save, AlertCircle, CheckCircle2 } from 'lucide-react'
 import axios from 'axios'
 import { DomainVerification } from '@/components/branding/DomainVerification'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { SettingsNav } from '@/components/settings/SettingsNav'
 
 const brandingSchema = z.object({
   website: z.string().url('Invalid URL format').optional().or(z.literal('')),
@@ -49,6 +50,8 @@ interface TenantData {
 
 export default function BrandingSettingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isDebugMode = searchParams.get('debug') === 'useTheForceLuke'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -90,6 +93,45 @@ export default function BrandingSettingsPage() {
   const website = watch('website')
   const hidePoweredBy = watch('hidePoweredBy')
   const tenantSlug = watch('tenantSlug')
+  const tenantName = watch('tenantName')
+
+
+  // Mark form as dirty when files are uploaded or removed
+  // This ensures the Save button is enabled when users upload logo/favicon
+  useEffect(() => {
+    if (logoFile !== null || faviconFile !== null) {
+      // A file has been selected - mark form as dirty
+      // We use a harmless field update to trigger the dirty state
+      const currentWebsite = watch('website') || ''
+      setValue('website', currentWebsite, { shouldDirty: true })
+    }
+  }, [logoFile, faviconFile, setValue, watch])
+
+  // Debug: Log button disabled reasons (only in debug mode)
+  useEffect(() => {
+    if (!isDebugMode) return
+
+    const disabledReasons = []
+    if (saving) disabledReasons.push('Currently saving')
+    if (isUploading) disabledReasons.push('Currently uploading files')
+    if (!isDirty) disabledReasons.push('No changes detected (form is clean)')
+    if (isValidatingSlug) disabledReasons.push('Slug validation in progress')
+    if (slugError) disabledReasons.push(`Slug error: ${slugError}`)
+    
+    if (disabledReasons.length > 0) {
+      console.log('[Save Button] Disabled reasons:', disabledReasons)
+      console.log('[Save Button] State:', {
+        saving,
+        isUploading,
+        isDirty,
+        isValidatingSlug,
+        slugError,
+        hasErrors: Object.keys(errors).length > 0,
+        hasLogoFile: !!logoFile,
+        hasFaviconFile: !!faviconFile,
+      })
+    }
+  }, [isDebugMode, saving, isUploading, isDirty, isValidatingSlug, slugError, errors, logoFile, faviconFile])
 
   // Validate slug when it changes
   useEffect(() => {
@@ -159,20 +201,34 @@ export default function BrandingSettingsPage() {
         setLogoPreview(brand.logo_url || null)
         setFaviconPreview(brand.favicon_url || null)
 
-        // Load tenant information
-        try {
-          const tenantResponse = await axios.get(`/api/v1/tenants/${brand.agency_id}`, {
-            withCredentials: true,
+        // Use tenant information from brands response (same pattern as brands endpoint)
+        // The brands endpoint already includes tenant data in the response
+        if (brand.tenant) {
+          setTenantData({
+            id: brand.tenant.id,
+            name: brand.tenant.name,
+            slug: brand.tenant.slug,
+            status: brand.tenant.status || 'active',
+            created_at: brand.created_at || new Date().toISOString(),
           })
-          if (tenantResponse.data) {
-            const tenant = tenantResponse.data
-            setTenantData(tenant)
-            setValue('tenantName', tenant.name || '')
-            setValue('tenantSlug', tenant.slug || '')
+          setValue('tenantName', brand.tenant.name || '')
+          setValue('tenantSlug', brand.tenant.slug || '')
+        } else if (brand.agency_id) {
+          // Fallback: if tenant data not in brands response, try separate call
+          try {
+            const tenantResponse = await axios.get(`/api/v1/tenants/${brand.agency_id}`, {
+              withCredentials: true,
+            })
+            if (tenantResponse.data) {
+              const tenant = tenantResponse.data
+              setTenantData(tenant)
+              setValue('tenantName', tenant.name || '')
+              setValue('tenantSlug', tenant.slug || '')
+            }
+          } catch (tenantError) {
+            console.error('Failed to load tenant data:', tenantError)
+            // Don't fail the whole page if tenant data fails to load
           }
-        } catch (tenantError) {
-          console.error('Failed to load tenant data:', tenantError)
-          // Don't fail the whole page if tenant data fails to load
         }
       } else {
         // No brand exists yet - try to get tenant info to at least show tenant fields
@@ -362,8 +418,15 @@ export default function BrandingSettingsPage() {
         website: formData.website || null,
         primary_color: formData.primaryColor,
         secondary_color: formData.secondaryColor || null,
-        hide_powered_by: formData.hidePoweredBy || false,
       }
+      
+      // Only include hide_powered_by if user has permission to change it
+      // This prevents 403 errors when the checkbox is disabled
+      if (brandData.can_hide_powered_by) {
+        updatePayload.hide_powered_by = formData.hidePoweredBy || false
+      }
+      // If user doesn't have permission, don't include this field in the payload
+      // The backend will keep the existing value
 
       // Only include logo/favicon if uploaded
       if (logoUrl) {
@@ -423,6 +486,14 @@ export default function BrandingSettingsPage() {
             setError(createErrorMessage)
             return
           }
+        } else if (updateError.response?.status === 403) {
+          // Handle 403 Forbidden (tier restrictions or permission issues)
+          const errorData = updateError.response?.data
+          const errorMessage = errorData?.error || 
+                             errorData?.message ||
+                             'You do not have permission to update this brand, or this feature requires a higher tier.'
+          setError(errorMessage)
+          return
         } else {
           // Re-throw other errors
           throw updateError
@@ -461,6 +532,15 @@ export default function BrandingSettingsPage() {
       
       // Reload brand data to get updated fields
       await loadBrandData()
+      
+      // Force theme refresh by clearing cache
+      // This ensures the sidebar and other components pick up the new branding
+      if (typeof window !== 'undefined') {
+        // Signal to BrandThemeProvider to clear cache and refetch
+        sessionStorage.setItem('farohq_clear_brand_cache', 'true')
+        // Trigger a custom event to notify BrandThemeProvider
+        window.dispatchEvent(new CustomEvent('brandThemeUpdated'))
+      }
 
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000)
@@ -520,11 +600,13 @@ export default function BrandingSettingsPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Branding Settings</h1>
-        <p className="text-muted-foreground">
-          Customize your portal's branding, colors, and domain settings.
+        <h1 className="text-3xl font-bold mb-2">Settings</h1>
+        <p className="text-muted-foreground mb-4">
+          Manage your organization settings and team members.
         </p>
       </div>
+
+      <SettingsNav />
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
@@ -593,10 +675,11 @@ export default function BrandingSettingsPage() {
             <CardTitle>Brand Assets</CardTitle>
             <CardDescription>Upload your logo and favicon</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Logo Upload */}
-            <div>
-              <Label htmlFor="logo">Logo</Label>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Logo Upload */}
+              <div className="space-y-2">
+                <Label htmlFor="logo">Logo</Label>
               {logoPreview ? (
                 <div className="relative mt-2 inline-block">
                   <div className="border-2 rounded-lg p-4">
@@ -648,11 +731,11 @@ export default function BrandingSettingsPage() {
                 }}
                 className="hidden"
               />
-            </div>
+              </div>
 
-            {/* Favicon Upload */}
-            <div>
-              <Label htmlFor="favicon">Favicon (Optional)</Label>
+              {/* Favicon Upload */}
+              <div className="space-y-2">
+                <Label htmlFor="favicon">Favicon (Optional)</Label>
               {faviconPreview ? (
                 <div className="relative mt-2 inline-block">
                   <div className="border-2 rounded-lg p-2 w-16 h-16">
@@ -704,6 +787,7 @@ export default function BrandingSettingsPage() {
                 }}
                 className="hidden"
               />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -721,7 +805,7 @@ export default function BrandingSettingsPage() {
                   id="primary-color"
                   type="color"
                   value={primaryColor}
-                  onChange={(e) => setValue('primaryColor', e.target.value)}
+                  onChange={(e) => setValue('primaryColor', e.target.value, { shouldDirty: true })}
                   className="w-20 h-10 cursor-pointer"
                 />
                 <Input
@@ -742,7 +826,7 @@ export default function BrandingSettingsPage() {
                   id="secondary-color"
                   type="color"
                   value={secondaryColor || '#64748b'}
-                  onChange={(e) => setValue('secondaryColor', e.target.value)}
+                  onChange={(e) => setValue('secondaryColor', e.target.value, { shouldDirty: true })}
                   className="w-20 h-10 cursor-pointer"
                 />
                 <Input
@@ -857,29 +941,56 @@ export default function BrandingSettingsPage() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.back()}
-            disabled={saving || isUploading}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={saving || isUploading || !isDirty || isValidatingSlug || !!slugError}
-            style={{ backgroundColor: primaryColor }}
-          >
-            {saving || isUploading ? (
-              'Saving...'
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save Changes
-              </>
-            )}
-          </Button>
+        <div className="mt-8 pt-6 border-t border-border">
+          <div className="flex justify-end gap-6 mb-8">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.back()}
+              disabled={saving || isUploading}
+              className="min-w-[120px]"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={saving || isUploading || !isDirty || isValidatingSlug || !!slugError}
+              style={{ backgroundColor: primaryColor }}
+              className="min-w-[160px]"
+              title={
+                isDebugMode
+                  ? saving
+                    ? 'Saving changes...'
+                    : isUploading
+                    ? 'Uploading files...'
+                    : !isDirty
+                    ? 'No changes to save. Make changes to enable this button.'
+                    : isValidatingSlug
+                    ? 'Validating slug...'
+                    : slugError
+                    ? `Cannot save: ${slugError}`
+                    : 'Save changes'
+                  : undefined
+              }
+            >
+              {saving || isUploading ? (
+                'Saving...'
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </div>
+          {/* Debug info - show why button is disabled (only in debug mode) */}
+          {isDebugMode && (saving || isUploading || !isDirty || isValidatingSlug || !!slugError) && (
+            <div className="text-xs text-muted-foreground mt-2 text-right">
+              {!isDirty && 'Make changes to enable save'}
+              {isValidatingSlug && 'Validating slug...'}
+              {slugError && `Error: ${slugError}`}
+            </div>
+          )}
         </div>
       </form>
     </div>

@@ -5,8 +5,8 @@ import { safeLogError } from '@/lib/log-sanitizer';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
 
 /**
- * GET /api/v1/tenants/{id}
- * Get tenant information by ID
+ * GET /api/v1/tenants/{id}/invites
+ * List all invites for a tenant
  * Uses standard token validation pattern (validates user has access to tenant)
  */
 export async function GET(
@@ -14,7 +14,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    // Handle both Next.js 15 (Promise) and Next.js 14 (direct) params
     const resolvedParams = params instanceof Promise ? await params : params;
     const tenantId = resolvedParams.id;
 
@@ -29,47 +28,54 @@ export async function GET(
     // Validate user has access to this tenant (standard pattern)
     const validatedTenantId = await getValidatedTenantId(tenantId, token, request);
 
-    // Fetch tenant information using direct fetch with Bearer token and X-Tenant-ID header
-    const tenantResponse = await fetch(`${API_BASE_URL}/api/v1/tenants/${validatedTenantId}`, {
+    const invitesResponse = await fetch(`${API_BASE_URL}/api/v1/tenants/${validatedTenantId}/invites`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'X-Tenant-ID': validatedTenantId, // Backend requires X-Tenant-ID header for tenant resolution
+        'X-Tenant-ID': validatedTenantId,
         'Content-Type': 'application/json',
       },
     });
 
-    if (!tenantResponse.ok) {
-      const errorText = await tenantResponse.text().catch(() => 'Unknown error');
+    if (!invitesResponse.ok) {
+      const errorText = await invitesResponse.text().catch(() => 'Unknown error');
       return NextResponse.json(
-        { error: 'Failed to fetch tenant', details: errorText },
-        { status: tenantResponse.status }
+        { error: 'Failed to fetch invites', details: errorText },
+        { status: invitesResponse.status }
       );
     }
 
-    const data = await tenantResponse.json();
+    const data = await invitesResponse.json();
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
-    safeLogError('Get tenant API error', error);
+    safeLogError('Get invites API error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Handle authentication errors specifically
+    if (errorMessage.includes('Authentication required')) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to fetch tenant', details: errorMessage },
+      { error: 'Failed to fetch invites', details: errorMessage },
       { status: 500 }
     );
   }
 }
 
 /**
- * PUT /api/v1/tenants/{id}
- * Update tenant information
+ * POST /api/v1/tenants/{id}/invites
+ * Create a new invite
  * Uses standard token validation pattern (validates user has access to tenant)
  */
-export async function PUT(
+export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    // Handle both Next.js 15 (Promise) and Next.js 14 (direct) params
     const resolvedParams = params instanceof Promise ? await params : params;
     const tenantId = resolvedParams.id;
 
@@ -86,9 +92,8 @@ export async function PUT(
 
     const body = await request.text();
 
-    // Update tenant using direct fetch with Bearer token
-    const tenantResponse = await fetch(`${API_BASE_URL}/api/v1/tenants/${validatedTenantId}`, {
-      method: 'PUT',
+    const inviteResponse = await fetch(`${API_BASE_URL}/api/v1/tenants/${validatedTenantId}/invites`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'X-Tenant-ID': validatedTenantId,
@@ -97,21 +102,30 @@ export async function PUT(
       body: body,
     });
 
-    if (!tenantResponse.ok) {
-      const errorText = await tenantResponse.text().catch(() => 'Unknown error');
+    if (!inviteResponse.ok) {
+      const errorText = await inviteResponse.text().catch(() => 'Unknown error');
       return NextResponse.json(
-        { error: 'Failed to update tenant', details: errorText },
-        { status: tenantResponse.status }
+        { error: 'Failed to create invite', details: errorText },
+        { status: inviteResponse.status }
       );
     }
 
-    const data = await tenantResponse.json();
-    return NextResponse.json(data, { status: 200 });
+    const data = await inviteResponse.json();
+    return NextResponse.json(data, { status: 201 });
   } catch (error) {
-    safeLogError('Update tenant API error', error);
+    safeLogError('Create invite API error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Handle authentication errors specifically
+    if (errorMessage.includes('Authentication required')) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to update tenant', details: errorMessage },
+      { error: 'Failed to create invite', details: errorMessage },
       { status: 500 }
     );
   }

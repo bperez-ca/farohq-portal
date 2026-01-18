@@ -1,72 +1,116 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyApiRequest, serverApiRequest, getClerkToken } from '@/lib/server-api-client';
+import { safeLogError, safeLogWarn } from '@/lib/log-sanitizer';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
 
 /**
- * Brand API endpoint that proxies to core-app backend
- * Supports both host-based (public) and org-based (authenticated) brand resolution
+ * Brand API endpoint that resolves brand by host or authenticated user
+ * Priority: Token-based (authenticated) > Host-based (public) > Default theme
  */
 export async function GET(request: NextRequest) {
   const host = request.nextUrl.searchParams.get('host');
   const orgId = request.nextUrl.searchParams.get('org-id') || request.nextUrl.searchParams.get('orgId');
   const slug = request.nextUrl.searchParams.get('slug');
-  
-  // If org-id or slug is provided, use authenticated org-based fetching
-  if (orgId || slug) {
-    try {
-      const token = await getClerkToken();
-      if (!token) {
-        // If no token but org requested, return default theme
-        return NextResponse.json(getDefaultTheme(request));
-      }
+  const tenantIdHeader = request.headers.get('x-tenant-id');
 
-      // Get user's organizations
+  // PRIORITY 1: Token-based resolution (authenticated users)
+  // Try to get token and resolve brand via user's tenant
+  try {
+    const token = await getClerkToken();
+    
+    if (token) {
+      // Get user's organizations to determine tenant context
       const orgsResponse = await serverApiRequest('/api/v1/tenants/my-orgs', {
         method: 'GET',
         token: token,
       });
 
-      if (!orgsResponse.ok) {
-        return NextResponse.json(getDefaultTheme(request));
-      }
+      if (orgsResponse.ok) {
+        const orgsData = await orgsResponse.json();
+        const orgs = orgsData.orgs || [];
+        
+        if (orgs.length > 0) {
+          // Determine which org to use
+          // Priority: query param org-id > header x-tenant-id > query param slug > first org
+          let activeOrg = orgs[0];
+          
+          if (orgId) {
+            activeOrg = orgs.find((org: any) => org.id === orgId) || orgs[0];
+          } else if (tenantIdHeader) {
+            activeOrg = orgs.find((org: any) => org.id === tenantIdHeader) || orgs[0];
+          } else if (slug) {
+            activeOrg = orgs.find((org: any) => org.slug === slug) || orgs[0];
+          }
 
-      const orgsData = await orgsResponse.json();
-      const orgs = orgsData.orgs || [];
-      
-      if (orgs.length === 0) {
-        return NextResponse.json(getDefaultTheme(request));
-      }
+          // Fetch brand using tenant ID
+          const brandResponse = await fetch(`${API_BASE_URL}/api/v1/brands`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'X-Tenant-ID': activeOrg.id,
+              'Content-Type': 'application/json',
+            },
+          });
 
-      // Find the requested org
-      let activeOrg = orgs[0];
-      if (orgId) {
-        activeOrg = orgs.find((org: any) => org.id === orgId) || orgs[0];
-      } else if (slug) {
-        activeOrg = orgs.find((org: any) => org.slug === slug) || orgs[0];
-      }
+          if (brandResponse.ok) {
+            const brands = await brandResponse.json();
+            
+            // Handle array or single object response
+            let brand = null;
+            if (Array.isArray(brands) && brands.length > 0) {
+              brand = brands[0];
+            } else if (brands && !Array.isArray(brands)) {
+              brand = brands;
+            }
 
-      // Fetch brand using tenant ID
-      const brandResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080'}/api/v1/brands`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Tenant-ID': activeOrg.id,
-          'Content-Type': 'application/json',
-        },
-      });
+            if (brand) {
+              // Also fetch tenant information to enrich the response
+              try {
+                const tenantResponse = await fetch(`${API_BASE_URL}/api/v1/tenants/${activeOrg.id}`, {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': activeOrg.id,
+                    'Content-Type': 'application/json',
+                  },
+                });
 
-      if (brandResponse.ok) {
-        const brands = await brandResponse.json();
-        const brand = Array.isArray(brands) && brands.length > 0 ? brands[0] : brands;
-        if (brand) {
-          return NextResponse.json(brand);
+                if (tenantResponse.ok) {
+                  const tenantData = await tenantResponse.json();
+                  // Enrich brand with tenant information
+                  return NextResponse.json({
+                    ...brand,
+                    tenant: {
+                      id: tenantData.id,
+                      name: tenantData.name,
+                      slug: tenantData.slug,
+                      status: tenantData.status,
+                    },
+                    tenant_name: tenantData.name,
+                  });
+                }
+              } catch (tenantError) {
+                safeLogWarn('Failed to fetch tenant data for brand enrichment', tenantError);
+                // Return brand without tenant enrichment
+              }
+
+              // Return brand with tenant_name if available
+              return NextResponse.json({
+                ...brand,
+                tenant_name: brand.tenant?.name || brand.tenant_name,
+              });
+            }
+          }
         }
       }
-    } catch (error) {
-      console.warn('Failed to fetch brand by org, falling back to default:', error);
     }
+  } catch (tokenError) {
+    safeLogWarn('Token-based brand resolution failed, trying host-based fallback', tokenError);
+    // Continue to host-based resolution
   }
-  
-  // Host-based resolution (original logic)
+
+  // PRIORITY 2: Host-based resolution (public/unauthenticated)
   // Normalize host - remove port if it doesn't match current port
   let normalizedHost = host || '';
   if (normalizedHost && normalizedHost.includes(':')) {
@@ -88,18 +132,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(data);
     }
 
-    // If 404, return default theme (no brand found)
-    if (response.status === 404) {
-      return NextResponse.json(getDefaultTheme(request));
-    }
-
-    // For other errors, return default theme
-    return NextResponse.json(getDefaultTheme(request));
+    // If 404 or other error, fall through to default theme
+    safeLogWarn(`Host-based brand resolution failed with status ${response.status}`);
   } catch (error) {
-    // Backend not available - fall back to default theme for development
-    console.warn('Backend not available, using default brand theme:', error);
-    return NextResponse.json(getDefaultTheme(request));
+    safeLogWarn('Host-based brand resolution failed', error);
+    // Continue to default theme
   }
+
+  // PRIORITY 3: Default theme fallback
+  return NextResponse.json(getDefaultTheme(request));
 }
 
 function getDefaultTheme(request?: NextRequest) {

@@ -92,6 +92,7 @@ export async function GET(request: NextRequest) {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
+        'X-Tenant-ID': activeOrg.id, // Backend requires X-Tenant-ID header for tenant resolution
         'Content-Type': 'application/json',
       },
     });
@@ -192,43 +193,76 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Get tenant ID from header or fetch from orgs
+    // Get tenant ID - since agency_id = brand_id = tenant_id, use brandId as tenant ID
+    // But first verify the user has access to this brand by checking their orgs
     const headersList = request.headers;
     const tenantIdHeader = headersList.get('x-tenant-id');
-    let tenantId = tenantIdHeader || brandId; // Use brandId as fallback since agency_id = brand_id = tenant_id
+    
+    // Default to brandId since they should be the same
+    let tenantId = brandId;
 
-    // If no tenant ID, get from user's orgs
-    if (!tenantId || tenantId === brandId) {
-      try {
-        const orgsResponse = await serverApiRequest('/api/v1/tenants/my-orgs', {
-          method: 'GET',
-          token: token,
-        });
+    // Verify user has access to this brand/tenant by checking their orgs
+    try {
+      const orgsResponse = await serverApiRequest('/api/v1/tenants/my-orgs', {
+        method: 'GET',
+        token: token,
+      });
 
-        if (orgsResponse.ok) {
-          const orgsData = await orgsResponse.json();
-          const orgs = orgsData.orgs || [];
-          if (orgs.length > 0) {
-            tenantId = orgs[0].id;
+      if (orgsResponse.ok) {
+        const orgsData = await orgsResponse.json();
+        const orgs = orgsData.orgs || [];
+        
+        if (orgs.length > 0) {
+          // Check if brandId matches one of the user's orgs
+          const matchingOrg = orgs.find((org: any) => org.id === brandId);
+          if (matchingOrg) {
+            // User has access - use brandId as tenantId
+            tenantId = brandId;
+          } else {
+            // Brand ID doesn't match user's orgs
+            // Use header if provided, otherwise use first org (backend will validate access)
+            tenantId = tenantIdHeader || orgs[0].id;
+            safeLogWarn(`Brand ID ${brandId} does not match user's orgs. Using ${tenantId} as tenant ID.`);
           }
+        } else {
+          // No orgs found - use header or brandId
+          tenantId = tenantIdHeader || brandId;
         }
-      } catch (orgError) {
-        safeLogWarn('Could not fetch orgs for tenant context', orgError);
       }
+    } catch (orgError) {
+      safeLogWarn('Could not fetch orgs for tenant context validation', orgError);
+      // Use header if provided, otherwise brandId
+      tenantId = tenantIdHeader || brandId;
     }
 
     // Make direct request to backend with tenant context
     // Get request body
     const body = await request.text();
+    
+    // Ensure we're using the correct tenant ID (should match brandId for agency_id = brand_id = tenant_id)
+    // But also verify the user has access to this tenant
+    const finalTenantId = tenantId || brandId;
+    
+    // Log request details for debugging (sanitized)
+    console.log('[Brands PUT] Request details:', {
+      brandId,
+      tenantId: finalTenantId,
+      hasToken: !!token,
+      bodyLength: body.length,
+    });
+    
     const response = await fetch(`${API_BASE_URL}/api/v1/brands/${brandId}`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'X-Tenant-ID': tenantId,
+        'X-Tenant-ID': finalTenantId,
         'Content-Type': 'application/json',
       },
       body: body,
     });
+    
+    // Log response status for debugging
+    console.log('[Brands PUT] Response status:', response.status, response.statusText);
     // Handle both JSON and plain text responses
     let responseData: any = {};
     const contentType = response.headers.get('content-type');
@@ -249,8 +283,28 @@ export async function PUT(request: NextRequest) {
     
     // Handle tier-related errors (403 Forbidden)
     if (response.status === 403) {
+      // Log the full error response for debugging
+      console.error('[Brands PUT] 403 Forbidden error:', {
+        error: responseData.error,
+        message: responseData.message,
+        tier_required: responseData.tier_required,
+        details: responseData.details || responseData,
+        brandId,
+        tenantId: finalTenantId,
+      });
+      
+      // Include more details in the error response
+      const errorMessage = responseData.error || responseData.message || 'Forbidden: You do not have permission to perform this action';
       return NextResponse.json(
-        { error: responseData.error || 'Forbidden', tier_required: true },
+        { 
+          error: errorMessage, 
+          tier_required: responseData.tier_required || false,
+          details: responseData.details || responseData,
+          // Include helpful context
+          suggestion: responseData.tier_required 
+            ? 'This feature may require a higher subscription tier. Please upgrade your plan.'
+            : 'Please verify you have the correct permissions (owner or admin role) to update branding settings.',
+        },
         { status: 403 }
       );
     }

@@ -64,12 +64,12 @@ export function PoweredByBadge({ hidePoweredBy, canHidePoweredBy, tier: propTier
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
       <a
         href="https://farohq.com"
         target="_blank"
         rel="noopener noreferrer"
-        className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-2 py-1 bg-background/80 backdrop-blur-sm rounded border border-border/50"
+        className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-2 py-1 bg-background/80 backdrop-blur-sm rounded border border-border/50 shadow-sm"
       >
         Powered by <span className="font-semibold">Faro</span>
       </a>

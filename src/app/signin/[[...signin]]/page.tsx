@@ -1,8 +1,15 @@
+'use client'
+
 import { SignIn } from '@clerk/nextjs'
+import { AuthLayout } from '@/components/auth/AuthLayout'
+import { useSearchParams } from 'next/navigation'
 
 export default function SignInPage() {
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect_url') || '/dashboard'
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <AuthLayout title="Sign In">
       <SignIn
         appearance={{
           elements: {
@@ -10,10 +17,10 @@ export default function SignInPage() {
             card: 'shadow-xl',
           },
         }}
-        redirectUrl="/dashboard"
+        redirectUrl={redirectUrl}
         routing="path"
         signUpUrl="/signup"
       />
-    </div>
+    </AuthLayout>
   )
 }

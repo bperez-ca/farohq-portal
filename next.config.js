@@ -66,10 +66,8 @@ const nextConfig = {
         source: '/api/v1/files/:path*',
         destination: `${apiUrl}/api/v1/files/:path*`,
       },
-      {
-        source: '/api/v1/tenants/:path*',
-        destination: `${apiUrl}/api/v1/tenants/:path*`,
-      },
+      // Note: /api/v1/tenants/* routes are handled by Next.js route handlers for authentication
+      // Route handlers: /api/v1/tenants/[id], /api/v1/tenants/my-orgs, etc.
       {
         source: '/api/v1/locations/:path*',
         destination: `${apiUrl}/api/v1/locations/:path*`,
