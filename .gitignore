@@ -55,3 +55,7 @@ error-context.md
 
 # Local file uploads (development only)
 /public/uploads/
+
+# Generated SDK (from OpenAPI spec)
+/src/lib/sdk/
+/src/lib/sdk/.openapi-generator/

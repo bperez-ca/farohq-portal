@@ -63,11 +63,8 @@
     --brand-secondary-color: var(--brand-secondary);
     --font-family: var(--brand-font);
     
-    /* Map brand colors to Tailwind variables (updated dynamically) */
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Note: --primary, --primary-foreground, --secondary, --secondary-foreground are defined above */
+    /* Brand colors will update these via JavaScript when brand theme is loaded */
   }
 
   .dark {
@@ -98,38 +95,92 @@
   }
 
   /* Apply brand colors to buttons and links */
-  button[class*="bg-primary"],
+  /* Use --brand-color variable for immediate updates */
+  button[class*="bg-primary"]:not([style*="background-color"]),
   a[class*="text-primary"],
   .btn-primary {
     background-color: var(--brand-color) !important;
+    color: var(--brand-color-text, #ffffff) !important;
   }
 
-  button[class*="bg-primary"]:hover,
+  button[class*="bg-primary"]:not([style*="background-color"]):hover,
   .btn-primary:hover {
     background-color: var(--brand-color-hover) !important;
+    color: var(--brand-color-text, #ffffff) !important;
+  }
+  
+  /* Automatically apply text color to buttons/badges with brand color backgrounds */
+  /* This ensures readability - white text for dark backgrounds, dark text for light */
+  button[style*="background-color"]:not([style*="color"]),
+  [role="button"][style*="background-color"]:not([style*="color"]) {
+    /* Text color will be set via JavaScript based on background color */
+  }
+  
+  /* For elements using brand color CSS variables, apply automatic text color */
+  .bg-brand,
+  [class*="bg-brand"]:not([class*="text-"]) {
+    color: var(--brand-color-text, #ffffff) !important;
+  }
+  
+  .bg-brand-secondary,
+  [class*="bg-brand-secondary"]:not([class*="text-"]) {
+    color: var(--brand-secondary-text, #1f2937) !important;
+  }
+  
+  /* Apply automatic text color to buttons and badges with brand colors */
+  button.bg-brand-secondary,
+  [role="button"].bg-brand-secondary,
+  .bg-brand-secondary.badge,
+  [class*="badge"].bg-brand-secondary {
+    color: var(--brand-secondary-text, #1f2937) !important;
+  }
+  
+  button.bg-brand,
+  [role="button"].bg-brand,
+  .bg-brand.badge,
+  [class*="badge"].bg-brand {
+    color: var(--brand-color-text, #ffffff) !important;
   }
 
+  /* Links with text-primary should use secondary brand color */
+  /* This ensures links use the secondary brand color instead of primary */
   a[class*="text-primary"],
-  .text-brand {
-    color: var(--brand-color) !important;
+  .text-brand,
+  a.text-primary {
+    color: hsl(var(--secondary)) !important;
+    background: transparent !important;
   }
 
   a[class*="text-primary"]:hover,
-  .text-brand:hover {
-    color: var(--brand-color-hover) !important;
+  .text-brand:hover,
+  a.text-primary:hover {
+    color: hsl(var(--secondary) / 0.8) !important;
+    background: transparent !important;
+  }
+  
+  /* Remove any background from links */
+  a,
+  a[class*="text-primary"],
+  a.text-primary,
+  .text-brand {
+    background-color: transparent !important;
+    background: transparent !important;
   }
 
   .bg-brand {
     background-color: var(--brand-color) !important;
+    color: var(--brand-color-text, #ffffff) !important;
   }
 
   .bg-brand:hover,
   .hover\:bg-brand:hover {
     background-color: var(--brand-color-hover) !important;
+    color: var(--brand-color-text, #ffffff) !important;
   }
 
   .bg-brand-hover {
     background-color: var(--brand-color-hover) !important;
+    color: var(--brand-color-text, #ffffff) !important;
   }
 
   .text-brand-accent {
@@ -138,6 +189,28 @@
 
   .bg-brand-accent {
     background-color: var(--brand-accent) !important;
+  }
+
+  /* Brand Secondary Color Utilities */
+  .bg-brand-secondary {
+    background-color: var(--brand-secondary) !important;
+    color: var(--brand-secondary-text, #1f2937) !important;
+  }
+
+  .text-brand-secondary {
+    color: var(--brand-secondary) !important;
+  }
+
+  .border-brand-secondary {
+    border-color: var(--brand-secondary) !important;
+  }
+
+  .hover\:bg-brand-secondary:hover {
+    background-color: var(--brand-secondary) !important;
+  }
+
+  .hover\:text-brand-secondary:hover {
+    color: var(--brand-secondary) !important;
   }
 
   /* Consistent button styling - rounded rectangles across the application */

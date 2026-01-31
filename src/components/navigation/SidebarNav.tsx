@@ -2,25 +2,45 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building2, Users, FileText, BarChart3, LayoutDashboard, Settings, ChevronLeft, ChevronRight, Moon, Sun, Palette, Mail, ChevronDown, ChevronUp } from 'lucide-react'
-import { useSidebar } from './SidebarContext'
-import { NavItem } from './NavItem'
-import { UserProfileSection } from './UserProfileSection'
+import { Building2, Users, FileText, BarChart3, LayoutDashboard, Settings, ChevronLeft, ChevronRight, Moon, Sun, Palette, Mail, ChevronDown, ChevronUp, Inbox, Star, MapPin, DollarSign, TrendingUp, Clock, Briefcase, Image, Link as LinkIcon, MessageSquare } from 'lucide-react'
+import { useSidebar } from '@/components/navigation/SidebarContext'
+import { NavItem } from '@/components/navigation/NavItem'
+import { UserProfileSection } from '@/components/navigation/UserProfileSection'
+import { WorkspaceSwitcher } from '@/components/workspace/WorkspaceSwitcher'
 import { useUser } from '@clerk/nextjs'
-import { Button } from '@farohq/ui'
+import { Button } from '@/lib/ui'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/app/hooks/useTheme'
 import { useEffect, useState } from 'react'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 import { BrandLogoSimple } from '@/components/BrandLogo'
+import { Loader2 } from 'lucide-react'
 // Using img tag instead of Next Image for external URLs
 
-const navigationItems = [
+const agencyNavigationItems = [
   { href: '/agency/dashboard', icon: Building2, label: 'Dashboard' },
   { href: '/agency/leads', icon: Users, label: 'Leads' },
   { href: '/agency/diagnostics', icon: FileText, label: 'Diagnostics' },
   { href: '/agency/kpis', icon: BarChart3, label: 'KPIs' },
-  { href: '/business/dashboard', icon: LayoutDashboard, label: 'Business' },
+]
+
+const businessNavigationItems = [
+  { href: '/business/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/business/inbox', icon: Inbox, label: 'Inbox' },
+  { href: '/business/reviews', icon: Star, label: 'Reviews' },
+  { href: '/business/presence', icon: MapPin, label: 'Presence' },
+  { href: '/business/revenue', icon: DollarSign, label: 'Revenue' },
+  { href: '/business/insights', icon: TrendingUp, label: 'Insights' },
+]
+
+const businessSettingsItems = [
+  { href: '/business/settings/profile', icon: Users, label: 'Profile' },
+  { href: '/business/settings/hours', icon: Clock, label: 'Hours' },
+  { href: '/business/settings/services-products', icon: Briefcase, label: 'Services & Products' },
+  { href: '/business/settings/media', icon: Image, label: 'Media' },
+  { href: '/business/settings/posts-qa', icon: FileText, label: 'Posts & Q&A' },
+  { href: '/business/settings/links-attributes', icon: LinkIcon, label: 'Links & Attributes' },
+  { href: '/business/settings/messaging', icon: MessageSquare, label: 'Messaging' },
 ]
 
 const settingsItems = [
@@ -33,10 +53,10 @@ export function SidebarNav() {
   const { collapsed, toggleCollapsed } = useSidebar()
   const { user, isLoaded: userLoaded } = useUser()
   const { theme, toggleTheme } = useTheme()
-  const { theme: brandTheme } = useBrandTheme()
+  const { theme: brandTheme, loading: isBrandThemeLoading } = useBrandTheme()
   const pathname = usePathname()
-  const [orgInfo, setOrgInfo] = useState<{ name: string; logoUrl?: string } | null>({ name: 'FARO' }) // Initialize with default
-  const [isLoadingOrgInfo, setIsLoadingOrgInfo] = useState(false) // Start as false since we have default
+  const [orgInfo, setOrgInfo] = useState<{ name: string; logoUrl?: string } | null>(null)
+  const [isLoadingOrgInfo, setIsLoadingOrgInfo] = useState(false)
 
   // Fetch organization info for branding (optimized with early return and request deduplication)
   useEffect(() => {
@@ -80,7 +100,7 @@ export function SidebarNav() {
             const selectedOrg = activeOrg || orgs[0]
             if (!cancelled) {
               setOrgInfo({
-                name: selectedOrg.name || 'FARO',
+                name: selectedOrg.name || '',
                 logoUrl: selectedOrg.logo_url || selectedOrg.logoUrl,
               })
             }
@@ -134,16 +154,17 @@ export function SidebarNav() {
     return null
   }
 
-  // Use default if still loading or orgInfo is null
-  const displayOrgInfo = orgInfo || { name: 'FARO' }
-
   // Get brand colors and logo from BrandThemeProvider (preferred) or fallback to orgInfo
-  const brandColor = brandTheme?.primary_color || '#2563eb'
-  const logoUrl = brandTheme?.logo_url || displayOrgInfo.logoUrl
-  const tenantName = brandTheme?.tenant_name || displayOrgInfo.name
+  const brandColor = brandTheme?.primary_color || '#6b7280'
+  const logoUrl = brandTheme?.logo_url || orgInfo?.logoUrl
+  const tenantName = brandTheme?.tenant_name || orgInfo?.name || ''
 
-  // Get first letter for fallback logo
-  const logoInitial = tenantName.charAt(0).toUpperCase()
+  // Show loading state if brand theme is loading or if we're still loading org info
+  const isLoading = isBrandThemeLoading || isLoadingOrgInfo
+
+  // Determine if we're in business or agency view
+  const isBusiness = pathname.startsWith('/business')
+  const defaultDashboardHref = isBusiness ? '/business/dashboard' : '/agency/dashboard'
 
   // Calculate luminance to determine if color is dark (for text contrast)
   const getLuminance = (hex: string): number => {
@@ -163,7 +184,11 @@ export function SidebarNav() {
   }
 
   const isDarkColor = brandColor ? getLuminance(brandColor) < 0.5 : false
-  const textColor = isDarkColor ? '#ffffff' : undefined // White text for dark backgrounds
+  // Use white text for dark backgrounds, dark text for light backgrounds
+  // For gray loading state, use appropriate text color
+  const textColor = brandColor 
+    ? (isDarkColor ? '#ffffff' : '#000000')
+    : '#6b7280' // Gray text for loading state
 
   // Function to split business name with line break based on length
   const formatBusinessName = (name: string): JSX.Element | string => {
@@ -214,34 +239,34 @@ export function SidebarNav() {
         }}
       >
         <Link
-          href="/agency/dashboard"
+          href={defaultDashboardHref}
           className={cn('flex items-center gap-3', collapsed && 'justify-center w-full')}
           style={{ color: textColor }}
         >
-          {logoUrl ? (
+          {isLoading ? (
+            <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+              <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+            </div>
+          ) : logoUrl ? (
             <BrandLogoSimple
               logoUrl={logoUrl}
               alt={tenantName}
               className="w-8 h-8 flex-shrink-0 object-contain"
-              fallback="/logo.svg"
+              showText={false}
             />
           ) : (
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center font-medium text-sm flex-shrink-0 shadow-sm"
-              style={{ 
-                backgroundColor: isDarkColor ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
-                color: textColor || '#ffffff',
-              }}
-            >
-              {logoInitial}
+            <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+              <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
             </div>
           )}
           {!collapsed && (
             <span 
               className="font-medium text-lg tracking-tight leading-tight"
-              style={{ color: textColor || undefined }}
+              style={{ 
+                color: textColor || (brandColor ? (isDarkColor ? '#ffffff' : '#000000') : undefined)
+              }}
             >
-              {formatBusinessName(tenantName)}
+              {tenantName ? formatBusinessName(tenantName) : ''}
             </span>
           )}
         </Link>
@@ -260,18 +285,27 @@ export function SidebarNav() {
 
       {/* Navigation items */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
-        {navigationItems.map((item) => (
-          <NavItem
-            key={item.href}
-            href={item.href}
-            icon={item.icon}
-            label={item.label}
-            collapsed={collapsed}
-          />
-        ))}
-        
-        {/* Settings with submenu */}
-        <SettingsSubmenu collapsed={collapsed} pathname={pathname} />
+        {(() => {
+          const isBusiness = pathname.startsWith('/business')
+          const navigationItems = isBusiness ? businessNavigationItems : agencyNavigationItems
+          
+          return (
+            <>
+              {navigationItems.map((item) => (
+                <NavItem
+                  key={item.href}
+                  href={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  collapsed={collapsed}
+                />
+              ))}
+              
+              {/* Settings with submenu */}
+              <SettingsSubmenu collapsed={collapsed} pathname={pathname} isBusiness={isBusiness} />
+            </>
+          )
+        })()}
       </nav>
 
       {/* Theme toggle */}
@@ -290,6 +324,9 @@ export function SidebarNav() {
           {!collapsed && <span className="ml-2">Toggle Theme</span>}
         </Button>
       </div>
+
+      {/* UX-006: Workspace switcher Agency ↔ Business */}
+      {!collapsed && <WorkspaceSwitcher />}
 
       {/* Collapse button when collapsed */}
       {collapsed && (
@@ -314,12 +351,16 @@ export function SidebarNav() {
 }
 
 // Settings submenu component
-function SettingsSubmenu({ collapsed, pathname }: { collapsed: boolean; pathname: string }) {
+function SettingsSubmenu({ collapsed, pathname, isBusiness = false }: { collapsed: boolean; pathname: string; isBusiness?: boolean }) {
   const [isOpen, setIsOpen] = useState(false)
   const { theme } = useBrandTheme()
   const brandColor = theme?.primary_color || '#2563eb'
   const activeBgColor = `${brandColor}15`
-  const isSettingsPage = pathname?.startsWith('/agency/settings')
+  const isSettingsPage = isBusiness 
+    ? pathname?.startsWith('/business/settings')
+    : pathname?.startsWith('/agency/settings')
+  
+  const currentSettingsItems = isBusiness ? businessSettingsItems : settingsItems
   
   // Auto-expand if we're on a settings page
   useEffect(() => {
@@ -367,7 +408,7 @@ function SettingsSubmenu({ collapsed, pathname }: { collapsed: boolean; pathname
       {/* Settings submenu items */}
       {!collapsed && isOpen && (
         <div className="ml-4 pl-4 border-l border-border space-y-1">
-          {settingsItems.map((item) => {
+          {currentSettingsItems.map((item) => {
             const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
             return (
               <Link
@@ -399,10 +440,11 @@ function SettingsSubmenu({ collapsed, pathname }: { collapsed: boolean; pathname
   )
 
   if (collapsed) {
+    const defaultSettingsHref = isBusiness ? '/business/settings/profile' : '/agency/settings/branding'
     return (
       <div className="space-y-1">
         <Link
-          href="/agency/settings/branding"
+          href={defaultSettingsHref}
           className={cn(
             'flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
             isSettingsPage

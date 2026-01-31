@@ -4,9 +4,9 @@ import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
+import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
 import { Upload, X } from 'lucide-react'
-import type { OnboardingData } from './OnboardingWizard'
+import type { OnboardingData } from '@/components/onboarding/OnboardingWizard'
 import axios from 'axios'
 
 const brandingSchema = z.object({
@@ -210,10 +210,13 @@ export function BrandingForm({ data, onComplete }: BrandingFormProps) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
 
-      // Create tenant
-      const tenantResponse = await axios.post('/api/v1/tenants', {
+      // Create tenant via onboard (adds user as owner) — UX-001
+      const tenantResponse = await axios.post('/api/v1/tenants/onboard', {
         name: formData.agencyName,
         slug: slug,
+        website: formData.website || '',
+        primary_color: formData.brandColor,
+        logo_url: '',
       }, {
         withCredentials: true,
       })

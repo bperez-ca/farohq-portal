@@ -17,9 +17,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@farohq/ui'
+} from '@/lib/ui'
 import { CheckCircle2 } from 'lucide-react'
-import type { OnboardingData } from './OnboardingWizard'
+import type { OnboardingData } from '@/components/onboarding/OnboardingWizard'
 import axios from 'axios'
 
 const locationSchema = z.object({
@@ -77,34 +77,18 @@ export function LocationForm({ data, onComplete }: LocationFormProps) {
     }
 
     try {
-      // Create location
-      // Note: The locations service may not be fully implemented yet
-      // This is a placeholder that will work once the service is ready
-      const locationData = {
-        tenant_id: data.tenantId,
-        name: formData.businessName,
-        city: formData.city,
-        phone: formData.phone,
-        industry: formData.industry,
-        gbp_url: formData.gbpUrl || undefined,
-      }
+      const slug = formData.businessName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'business'
 
-      let locationId: string | undefined
-      try {
-        const locationResponse = await axios.post('/api/v1/locations', locationData, {
-          withCredentials: true,
-        })
-        locationId = locationResponse.data.id
-      } catch (error: any) {
-        // If locations service is not available, we'll still complete onboarding
-        console.warn('Locations service not available:', error)
-        // Show a warning but continue
-        if (error.response?.status !== 404) {
-          // Only show warning for non-404 errors (service exists but failed)
-          console.warn('Location creation failed, but continuing onboarding:', error.response?.data?.message || error.message)
-        }
-        // In a real scenario, you might want to queue this for later or show a warning
-      }
+      const clientResponse = await axios.post(
+        `/api/v1/tenants/${data.tenantId}/clients`,
+        { name: formData.businessName, slug, tier: 'starter' },
+        { withCredentials: true }
+      )
+      const clientId = clientResponse.data?.id
 
       onComplete({
         businessName: formData.businessName,
@@ -112,15 +96,12 @@ export function LocationForm({ data, onComplete }: LocationFormProps) {
         city: formData.city,
         phone: formData.phone,
         gbpUrl: formData.gbpUrl,
-        locationId,
+        clientId,
       })
     } catch (error: any) {
-      console.error('Failed to create location:', error)
-      alert(
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to create location. Please try again.'
-      )
+      console.error('Failed to create first client:', error)
+      const msg = error.response?.data?.error || error.response?.data?.details || error.message
+      alert(msg || 'Failed to create first client. Please try again.')
     }
   }
 
@@ -231,7 +212,7 @@ export function LocationForm({ data, onComplete }: LocationFormProps) {
               style={{ backgroundColor: brandColor }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Creating...' : 'Generate Report'}
+              {isSubmitting ? 'Creating first client...' : 'Add first client'}
             </Button>
           </form>
         </CardContent>

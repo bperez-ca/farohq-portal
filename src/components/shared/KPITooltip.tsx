@@ -1,15 +1,15 @@
-'use client'
+"use client";
 
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { HelpCircle } from 'lucide-react'
+} from "@/components/ui/tooltip";
+import { HelpCircle } from "lucide-react";
 
 interface KPITooltipProps {
-  content: string
+  content: string;
 }
 
 export function KPITooltip({ content }: KPITooltipProps) {
@@ -29,5 +29,6 @@ export function KPITooltip({ content }: KPITooltipProps) {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
+  );
 }
+

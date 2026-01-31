@@ -1,10 +1,10 @@
 'use client'
 
-import { Button } from '@farohq/ui'
-import { Card } from '@farohq/ui'
+import { Button } from '@/lib/ui'
+import { Card } from '@/lib/ui'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 import { LucideIcon } from 'lucide-react'
-import { KPITooltip } from './KPITooltip'
+import { KPITooltip } from '@/components/shared/KPITooltip'
 
 interface StatCardProps {
   title?: string

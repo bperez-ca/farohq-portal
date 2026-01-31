@@ -262,7 +262,7 @@ export class BrandClient {
   }
 
   /**
-   * Get default theme (fallback)
+   * Get default theme (loading state with gray colors)
    */
   private getDefaultTheme(): BrandTheme {
     return {
@@ -271,10 +271,10 @@ export class BrandClient {
       subdomain: null,
       domain_type: null,
       website: null,
-      logo_url: '/logo.svg',
-      favicon_url: '/favicon.svg',
-      primary_color: '#2563eb',
-      secondary_color: '#6b7280',
+      logo_url: null,
+      favicon_url: null,
+      primary_color: '#6b7280',
+      secondary_color: '#9ca3af',
       hide_powered_by: false,
       can_hide_powered_by: false,
       can_configure_domain: false,

@@ -19,8 +19,9 @@ export function NavItem({ href, icon: Icon, label, collapsed = false }: NavItemP
   const isActive = pathname === href || pathname.startsWith(`${href}/`)
   const { theme } = useBrandTheme()
   
-  // Get brand color from theme or use default
+  // Get brand colors from theme or use defaults
   const brandColor = theme?.primary_color || '#2563eb'
+  const secondaryColor = theme?.secondary_color || '#6b7280'
   // Create semi-transparent background color (15% opacity)
   const activeBgColor = `${brandColor}15`
 
@@ -31,7 +32,7 @@ export function NavItem({ href, icon: Icon, label, collapsed = false }: NavItemP
         'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all tracking-tight',
         isActive
           ? 'text-foreground'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+          : 'hover:text-foreground hover:bg-accent/50',
         collapsed && 'justify-center'
       )}
       style={
@@ -40,10 +41,17 @@ export function NavItem({ href, icon: Icon, label, collapsed = false }: NavItemP
               backgroundColor: activeBgColor,
               color: brandColor,
             }
+          : !isActive
+          ? {
+              color: secondaryColor,
+            }
           : {}
       }
     >
-      <Icon className="w-5 h-5 flex-shrink-0" style={isActive ? { color: brandColor } : {}} />
+      <Icon 
+        className="w-5 h-5 flex-shrink-0" 
+        style={isActive ? { color: brandColor } : { color: secondaryColor }} 
+      />
       {!collapsed && <span>{label}</span>}
     </Link>
   )

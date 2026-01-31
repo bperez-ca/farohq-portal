@@ -15,7 +15,7 @@ import {
   Separator,
   useTheme,
   BrandLogo
-} from '@farohq/ui';
+} from '@/lib/ui';
 import { CheckCircle2, XCircle, Loader2, RefreshCw } from 'lucide-react';
 
 export default function TestThemePage() {

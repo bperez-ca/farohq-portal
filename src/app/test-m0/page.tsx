@@ -25,7 +25,7 @@ import {
   Breadcrumbs,
   PageHeader,
   type ProviderId
-} from '@farohq/ui';
+} from '@/lib/ui';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -214,7 +214,7 @@ export default function TestM0Page() {
               <Alert>
                 <AlertTitle>Package Import Test</AlertTitle>
                 <AlertDescription>
-                  All components should be importable from <code className="bg-muted px-1 rounded">@farohq/ui</code>
+                  All components should be importable from <code className="bg-muted px-1 rounded">@/lib/ui</code>
                 </AlertDescription>
               </Alert>
               <div className="p-4 border rounded-lg bg-muted/50">
@@ -517,7 +517,7 @@ export default function TestM0Page() {
                       ) : (
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5" />
                       )}
-                      <span className="text-sm">✅ Components importable from <code>@farohq/ui</code></span>
+                      <span className="text-sm">✅ Components importable from <code>@/lib/ui</code></span>
                     </div>
                     <div className="flex items-start gap-2">
                       {testResults['Components render correctly'] ? (

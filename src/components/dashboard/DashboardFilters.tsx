@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@farohq/ui'
-import { Card } from '@farohq/ui'
+import { Button } from '@/lib/ui'
+import { Card } from '@/lib/ui'
 import { Calendar, Filter } from 'lucide-react'
 
 interface DashboardFiltersProps {

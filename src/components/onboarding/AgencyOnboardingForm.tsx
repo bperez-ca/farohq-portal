@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
+import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
 import { Upload, X } from 'lucide-react'
 import { safeLogError, safeLogWarn } from '@/lib/log-sanitizer'
 

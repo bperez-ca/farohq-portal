@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
-import { Button } from '@farohq/ui'
+import { Button } from '@/lib/ui'
 
 // Simple dropdown implementation using native select for now
 // Can be upgraded to use DropdownMenu component if available

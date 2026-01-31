@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useTheme } from '@farohq/ui';
+import { useTheme } from '@/lib/ui';
 
 /**
  * Favicon component that updates the favicon based on brand theme

@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Transpile the UI package for Next.js compatibility
-  transpilePackages: ['@farohq/ui'],
+  // Transpile packages for Next.js compatibility (removed @farohq/ui as it's now inlined)
   webpack: (config) => {
     // Ensure peer dependencies from UI package resolve from portal app's node_modules
     const peerDeps = [

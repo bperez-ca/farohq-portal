@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useUser, useAuth } from '@clerk/nextjs'
 import { SignUp } from '@clerk/nextjs'
+import { trackSignupStarted } from '@/lib/analytics'
 
 // Component to sync user data after signup
 function UserSyncHandler() {
@@ -68,6 +69,10 @@ function UserSyncHandler() {
 import { AuthLayout } from '@/components/auth/AuthLayout'
 
 export default function SignUpPage() {
+  useEffect(() => {
+    trackSignupStarted()
+  }, [])
+
   return (
     <AuthLayout title="Sign Up">
       <SignUp

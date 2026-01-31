@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
-import { Button } from '@farohq/ui'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
+import { Button } from '@/lib/ui'
 import { AlertCircle, CheckCircle2, Loader2, ExternalLink } from 'lucide-react'
 import axios from 'axios'
 

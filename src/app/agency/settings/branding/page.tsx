@@ -4,12 +4,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
-import { Upload, X, Save, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge } from '@/lib/ui'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { Upload, X, Save, AlertCircle, CheckCircle2, Palette, RotateCcw, Eye, EyeOff } from 'lucide-react'
 import axios from 'axios'
 import { DomainVerification } from '@/components/branding/DomainVerification'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SettingsNav } from '@/components/settings/SettingsNav'
+import { suggestSecondaryColor, getContrastRating, hexToHsl, hslToHex, getTextColorForBackground, type ColorSuggestion } from '@/lib/color-utils'
 
 const brandingSchema = z.object({
   website: z.string().url('Invalid URL format').optional().or(z.literal('')),
@@ -65,6 +67,10 @@ export default function BrandingSettingsPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [slugError, setSlugError] = useState<string | null>(null)
   const [isValidatingSlug, setIsValidatingSlug] = useState(false)
+  const [colorSuggestions, setColorSuggestions] = useState<ColorSuggestion[]>([])
+  const [suggestionOpen, setSuggestionOpen] = useState(false)
+  const [previewMode, setPreviewMode] = useState(false)
+  const [previewColors, setPreviewColors] = useState<{ primary?: string; secondary?: string } | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const faviconInputRef = useRef<HTMLInputElement>(null)
   const slugValidationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -94,6 +100,76 @@ export default function BrandingSettingsPage() {
   const hidePoweredBy = watch('hidePoweredBy')
   const tenantSlug = watch('tenantSlug')
   const tenantName = watch('tenantName')
+
+  // Generate color suggestions when primary color changes
+  useEffect(() => {
+    if (primaryColor && /^#[0-9A-Fa-f]{6}$/i.test(primaryColor)) {
+      const suggestions = suggestSecondaryColor(primaryColor, { preferHighContrast: true })
+      setColorSuggestions(suggestions)
+    }
+  }, [primaryColor])
+
+  // Sync preview colors with form values when preview mode is active
+  useEffect(() => {
+    if (previewMode) {
+      setPreviewColors({
+        primary: primaryColor,
+        secondary: secondaryColor || undefined,
+      })
+    }
+  }, [primaryColor, secondaryColor, previewMode])
+
+  // Apply preview colors when in preview mode
+  useEffect(() => {
+    if (previewMode && previewColors) {
+      const root = document.documentElement
+      if (previewColors.primary) {
+        root.style.setProperty('--brand-color', previewColors.primary, 'important')
+        // Calculate hover color
+        const hsl = hexToHsl(previewColors.primary)
+        if (hsl) {
+          const hoverL = Math.max(0, hsl.l - 10)
+          const hoverColor = hslToHex(hsl.h, hsl.s, hoverL)
+          root.style.setProperty('--brand-color-hover', hoverColor, 'important')
+        }
+        // Automatically set text color based on background darkness
+        const textColor = getTextColorForBackground(previewColors.primary)
+        root.style.setProperty('--brand-color-text', textColor, 'important')
+        // Also update primary-foreground for Tailwind compatibility
+        root.style.setProperty('--primary-foreground', textColor === '#ffffff' ? '210 40% 98%' : '222.2 47.4% 11.2%', 'important')
+      }
+      if (previewColors.secondary) {
+        root.style.setProperty('--brand-secondary', previewColors.secondary, 'important')
+        root.style.setProperty('--brand-secondary-color', previewColors.secondary, 'important')
+        // Automatically set text color based on background darkness
+        const textColor = getTextColorForBackground(previewColors.secondary)
+        root.style.setProperty('--brand-secondary-text', textColor, 'important')
+        // Also update Tailwind secondary
+        const hsl = hexToHsl(previewColors.secondary)
+        if (hsl) {
+          root.style.setProperty('--secondary', `${hsl.h} ${hsl.s}% ${hsl.l}%`, 'important')
+          // Update secondary-foreground based on text color
+          root.style.setProperty('--secondary-foreground', textColor === '#ffffff' ? '210 40% 98%' : '222.2 47.4% 11.2%', 'important')
+        }
+      }
+    } else if (!previewMode) {
+      // Restore original theme when preview is disabled
+      if (brandData) {
+        const root = document.documentElement
+        if (brandData.primary_color) {
+          root.style.setProperty('--brand-color', brandData.primary_color, 'important')
+          const textColor = getTextColorForBackground(brandData.primary_color)
+          root.style.setProperty('--brand-color-text', textColor, 'important')
+        }
+        if (brandData.secondary_color) {
+          root.style.setProperty('--brand-secondary', brandData.secondary_color, 'important')
+          root.style.setProperty('--brand-secondary-color', brandData.secondary_color, 'important')
+          const textColor = getTextColorForBackground(brandData.secondary_color)
+          root.style.setProperty('--brand-secondary-text', textColor, 'important')
+        }
+      }
+    }
+  }, [previewMode, previewColors, brandData])
 
 
   // Mark form as dirty when files are uploaded or removed
@@ -298,7 +374,18 @@ export default function BrandingSettingsPage() {
       }
     } catch (error: any) {
       console.error('Failed to load brand data:', error)
-      setError('Failed to load branding settings. Please try again.')
+      
+      // Handle 403 error specifically
+      if (error.response?.status === 403) {
+        const errorMessage = error.response?.data?.error || error.response?.data || error.response?.data?.message
+        if (typeof errorMessage === 'string' && errorMessage.includes("don't have access")) {
+          setError('You don\'t have access to any organizations. Please contact support.')
+        } else {
+          setError(errorMessage || 'Access denied. Please ensure you are part of an organization.')
+        }
+      } else {
+        setError('Failed to load branding settings. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -437,35 +524,84 @@ export default function BrandingSettingsPage() {
       }
 
       // Domain configuration (Scale tier only, validated on backend)
-      if (formData.domain !== undefined) {
-        updatePayload.domain = formData.domain || null
+      // Only include domain if it's a non-empty string, otherwise don't include it at all
+      // For updates, we need to handle clearing the domain explicitly, but for creates, 
+      // we should omit it entirely to let the backend generate subdomains
+      if (formData.domain !== undefined && formData.domain !== null && formData.domain.trim() !== '') {
+        updatePayload.domain = formData.domain.trim()
       }
+      // If domain is empty, don't include it in the payload - backend will handle subdomain generation
 
       // Update or create brand
       let brandResponse
       try {
-        // Try to update first
-        brandResponse = await axios.put(`/api/v1/brands?brandId=${brandData.agency_id}`, updatePayload, {
-          withCredentials: true,
-          headers: {
-            'X-Tenant-ID': brandData.agency_id, // Ensure tenant context
-          },
-        })
-
-        // Handle tier-related errors (403 Forbidden)
-        if (brandResponse.status === 403) {
-          const errorData = brandResponse.data
-          setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
-          return
-        }
-
-        setBrandData(brandResponse.data)
-      } catch (updateError: any) {
-        // If brand doesn't exist (404), create it
-        if (updateError.response?.status === 404) {
+        // Try to update first (only if brand exists - check if agency_id exists)
+        if (brandData.agency_id) {
           try {
-            // Create brand with the same payload
-            brandResponse = await axios.post('/api/v1/brands', updatePayload, {
+            brandResponse = await axios.put(`/api/v1/brands?brandId=${brandData.agency_id}`, updatePayload, {
+              withCredentials: true,
+              headers: {
+                'X-Tenant-ID': brandData.agency_id, // Ensure tenant context
+              },
+            })
+
+            // Handle tier-related errors (403 Forbidden)
+            if (brandResponse.status === 403) {
+              const errorData = brandResponse.data
+              setError(errorData.error || 'This feature is not available for your tier. Please upgrade.')
+              return
+            }
+
+            setBrandData(brandResponse.data)
+            // Success - skip to tenant update
+          } catch (updateError: any) {
+            // If 404, brand doesn't exist - will create below
+            if (updateError.response?.status === 404) {
+              // Brand doesn't exist - will create in next step
+              brandResponse = null
+            } else {
+              // Other error - re-throw to be handled
+              throw updateError
+            }
+          }
+        }
+        
+        // If update failed (404) or no brand exists, create new brand
+        if (!brandResponse) {
+          try {
+            // Create brand with payload - explicitly exclude domain to avoid unique constraint violations
+            // Backend will automatically generate subdomain based on tenant tier
+            // NOTE: The backend has a bug where it sets domain="" for lower tiers, which violates
+            // the unique constraint if multiple brands exist. The backend should use NULL instead.
+            // This is a backend issue that needs to be fixed.
+            const createPayload: any = {
+              primary_color: updatePayload.primary_color,
+              secondary_color: updatePayload.secondary_color || null,
+              theme_json: {}, // Backend expects theme_json, provide empty object if not specified
+            }
+            
+            // Only include website if it's provided (can be null/empty)
+            if (updatePayload.website) {
+              createPayload.website = updatePayload.website
+            }
+            
+            // Only include logo/favicon if they exist in updatePayload
+            if (updatePayload.logo_url) {
+              createPayload.logo_url = updatePayload.logo_url
+            }
+            if (updatePayload.favicon_url) {
+              createPayload.favicon_url = updatePayload.favicon_url
+            }
+            
+            // Only include hide_powered_by if it exists and user has permission
+            if (updatePayload.hide_powered_by !== undefined && brandData.can_hide_powered_by) {
+              createPayload.hide_powered_by = updatePayload.hide_powered_by
+            }
+            
+            // CRITICAL: Do NOT include domain field - backend will set it to "" for lower tiers
+            // which violates unique constraint. This needs to be fixed in the backend to use NULL.
+            
+            brandResponse = await axios.post('/api/v1/brands', createPayload, {
               withCredentials: true,
               headers: {
                 'X-Tenant-ID': brandData.agency_id, // Ensure tenant context
@@ -479,14 +615,36 @@ export default function BrandingSettingsPage() {
             }
           } catch (createError: any) {
             console.error('Failed to create brand:', createError)
-            const createErrorMessage = createError.response?.data?.error || 
+            let createErrorMessage = createError.response?.data?.error || 
                                      createError.response?.data?.message ||
                                      createError.message ||
                                      'Failed to create brand. Please try again.'
+            
+            // Handle database constraint violations
+            if (createError.response?.status === 500) {
+              const errorText = createError.response?.data || ''
+              const errorString = typeof errorText === 'string' ? errorText : JSON.stringify(errorText)
+              
+              if (errorString.includes('branding_domain_key')) {
+                // This is a backend issue: backend sets domain="" for lower tiers, which violates unique constraint
+                // when multiple brands exist. The backend should use NULL instead of empty string.
+                createErrorMessage = 'Failed to create brand due to a domain conflict. This may occur when multiple brands have empty domains. Please refresh the page and try again, or contact support if the issue persists.'
+              } else if (errorString.includes('duplicate key')) {
+                createErrorMessage = 'This brand already exists. Please refresh the page and try again.'
+              } else {
+                createErrorMessage = 'Failed to create brand. The domain may already be in use, or there may be a system error. Please try again or contact support.'
+              }
+            } else if (createError.response?.status === 403) {
+              createErrorMessage = 'You do not have permission to create this brand, or this feature requires a higher tier.'
+            }
+            
             setError(createErrorMessage)
             return
           }
-        } else if (updateError.response?.status === 403) {
+        }
+      } catch (updateError: any) {
+        // Handle errors from the update attempt (if not 404)
+        if (updateError.response?.status === 403) {
           // Handle 403 Forbidden (tier restrictions or permission issues)
           const errorData = updateError.response?.data
           const errorMessage = errorData?.error || 
@@ -495,7 +653,7 @@ export default function BrandingSettingsPage() {
           setError(errorMessage)
           return
         } else {
-          // Re-throw other errors
+          // Re-throw other errors to be handled by outer catch
           throw updateError
         }
       }
@@ -794,8 +952,42 @@ export default function BrandingSettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Brand Colors</CardTitle>
-            <CardDescription>Set your primary and secondary brand colors</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Brand Colors</CardTitle>
+                <CardDescription>Set your primary and secondary brand colors</CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant={previewMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  if (!previewMode) {
+                    // Enable preview with current form values
+                    setPreviewColors({
+                      primary: primaryColor,
+                      secondary: secondaryColor || undefined,
+                    })
+                  } else {
+                    // Disable preview
+                    setPreviewColors(null)
+                  }
+                  setPreviewMode(!previewMode)
+                }}
+              >
+                {previewMode ? (
+                  <>
+                    <EyeOff className="w-4 h-4 mr-2" />
+                    Exit Preview
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4 mr-2" />
+                    Preview
+                  </>
+                )}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -805,12 +997,24 @@ export default function BrandingSettingsPage() {
                   id="primary-color"
                   type="color"
                   value={primaryColor}
-                  onChange={(e) => setValue('primaryColor', e.target.value, { shouldDirty: true })}
+                  onChange={(e) => {
+                    const newColor = e.target.value
+                    setValue('primaryColor', newColor, { shouldDirty: true })
+                    if (previewMode) {
+                      setPreviewColors(prev => ({ ...prev, primary: newColor }))
+                    }
+                  }}
                   className="w-20 h-10 cursor-pointer"
                 />
                 <Input
                   placeholder="#2563eb"
-                  {...register('primaryColor')}
+                  {...register('primaryColor', {
+                    onChange: (e) => {
+                      if (previewMode) {
+                        setPreviewColors(prev => ({ ...prev, primary: e.target.value }))
+                      }
+                    }
+                  })}
                   className={errors.primaryColor ? 'border-red-500' : ''}
                 />
               </div>
@@ -826,19 +1030,245 @@ export default function BrandingSettingsPage() {
                   id="secondary-color"
                   type="color"
                   value={secondaryColor || '#64748b'}
-                  onChange={(e) => setValue('secondaryColor', e.target.value, { shouldDirty: true })}
+                  onChange={(e) => {
+                    const newColor = e.target.value
+                    setValue('secondaryColor', newColor, { shouldDirty: true })
+                    if (previewMode) {
+                      setPreviewColors(prev => ({ ...prev, secondary: newColor }))
+                    }
+                  }}
                   className="w-20 h-10 cursor-pointer"
                 />
                 <Input
                   placeholder="#64748b"
-                  {...register('secondaryColor')}
+                  {...register('secondaryColor', {
+                    onChange: (e) => {
+                      if (previewMode) {
+                        setPreviewColors(prev => ({ ...prev, secondary: e.target.value || undefined }))
+                      }
+                    }
+                  })}
                   className={errors.secondaryColor ? 'border-red-500' : ''}
                 />
+                <Popover open={suggestionOpen} onOpenChange={setSuggestionOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="whitespace-nowrap"
+                    >
+                      <Palette className="w-4 h-4 mr-2" />
+                      Suggest Color
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80" align="start">
+                    <div className="space-y-3">
+                      <div className="font-semibold text-sm">Suggested Secondary Colors</div>
+                      <p className="text-xs text-muted-foreground">
+                        Based on your primary color using color theory
+                      </p>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {colorSuggestions.length > 0 ? (
+                          colorSuggestions.map((suggestion, index) => {
+                            const contrastRating = getContrastRating(suggestion.contrast)
+                            return (
+                              <div
+                                key={index}
+                                className="flex items-center gap-3 p-2 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer"
+                                onClick={() => {
+                                  setValue('secondaryColor', suggestion.color, { shouldDirty: true })
+                                  if (previewMode) {
+                                    setPreviewColors(prev => ({ ...prev, secondary: suggestion.color }))
+                                  }
+                                  setSuggestionOpen(false)
+                                }}
+                              >
+                                <div
+                                  className="w-10 h-10 rounded border-2 border-border flex-shrink-0"
+                                  style={{ backgroundColor: suggestion.color }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm">{suggestion.label}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {suggestion.description}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs font-mono">{suggestion.color}</span>
+                                    <span
+                                      className={`text-xs ${
+                                        contrastRating.accessible
+                                          ? 'text-green-600 dark:text-green-400'
+                                          : 'text-amber-600 dark:text-amber-400'
+                                      }`}
+                                    >
+                                      {contrastRating.level}
+                                    </span>
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setValue('secondaryColor', suggestion.color, { shouldDirty: true })
+                                    if (previewMode) {
+                                      setPreviewColors(prev => ({ ...prev, secondary: suggestion.color }))
+                                    }
+                                    setSuggestionOpen(false)
+                                  }}
+                                >
+                                  Apply
+                                </Button>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <div className="text-sm text-muted-foreground text-center py-4">
+                            No suggestions available. Please select a valid primary color.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const defaultColor = '#9ca3af'
+                    setValue('secondaryColor', defaultColor, { shouldDirty: true })
+                    if (previewMode) {
+                      setPreviewColors(prev => ({ ...prev, secondary: defaultColor }))
+                    }
+                  }}
+                  title="Reset to default gray"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setValue('secondaryColor', '', { shouldDirty: true })
+                    if (previewMode) {
+                      setPreviewColors(prev => ({ ...prev, secondary: undefined }))
+                    }
+                  }}
+                  title="Clear secondary color"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
               </div>
               {errors.secondaryColor && (
                 <p className="text-sm text-red-500 mt-1">{errors.secondaryColor.message}</p>
               )}
+              <p className="text-xs text-muted-foreground mt-1">
+                Used for inactive states, borders, and subtle accents
+              </p>
             </div>
+
+            {/* Preview Component - Show sample UI elements */}
+            {previewMode && (
+              <div className="mt-6 pt-6 border-t">
+                <Label className="text-sm font-semibold mb-3 block">Live Preview</Label>
+                <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Buttons</div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button 
+                        size="sm" 
+                        style={{ 
+                          backgroundColor: previewColors?.primary || primaryColor,
+                          color: getTextColorForBackground(previewColors?.primary || primaryColor)
+                        }}
+                      >
+                        Primary Button
+                      </Button>
+                      <Button 
+                        variant="secondary" 
+                        size="sm"
+                        style={{ 
+                          backgroundColor: previewColors?.secondary || secondaryColor || '#9ca3af',
+                          color: getTextColorForBackground(previewColors?.secondary || secondaryColor || '#9ca3af')
+                        }}
+                      >
+                        Secondary Button
+                      </Button>
+                      <Button variant="outline" size="sm">Outline Button</Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Badges</div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge 
+                        variant="default" 
+                        style={{ 
+                          backgroundColor: previewColors?.primary || primaryColor,
+                          color: getTextColorForBackground(previewColors?.primary || primaryColor)
+                        }}
+                      >
+                        Primary Badge
+                      </Badge>
+                      <Badge 
+                        variant="secondary"
+                        style={{ 
+                          backgroundColor: previewColors?.secondary || secondaryColor || '#9ca3af',
+                          color: getTextColorForBackground(previewColors?.secondary || secondaryColor || '#9ca3af')
+                        }}
+                      >
+                        Secondary Badge
+                      </Badge>
+                      <Badge variant="outline">Outline Badge</Badge>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Navigation States</div>
+                    <div className="flex flex-col gap-1">
+                      <div 
+                        className="px-3 py-2 rounded-lg text-sm font-medium"
+                        style={{ 
+                          backgroundColor: `${previewColors?.primary || primaryColor}15`,
+                          color: previewColors?.primary || primaryColor
+                        }}
+                      >
+                        Active Navigation Item
+                      </div>
+                      <div 
+                        className="px-3 py-2 rounded-lg text-sm font-medium hover:bg-accent/50"
+                        style={{ 
+                          color: previewColors?.secondary || secondaryColor || '#6b7280'
+                        }}
+                      >
+                        Inactive Navigation Item
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Color Values</div>
+                    <div className="flex gap-4 text-xs">
+                      <div>
+                        <span className="font-medium">Primary:</span>{' '}
+                        <span className="font-mono">{previewColors?.primary || primaryColor}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">Secondary:</span>{' '}
+                        <span className="font-mono">{previewColors?.secondary || secondaryColor || 'Not set'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Preview mode is active. Changes are temporary until you save.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

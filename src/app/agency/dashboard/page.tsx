@@ -2,8 +2,9 @@
 
 import { StatCard } from '@/components/shared/StatCard'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { Card } from '@farohq/ui'
-import { Button } from '@farohq/ui'
+import { GuidedTasksPanel } from '@/components/guided-tasks/GuidedTasksPanel'
+import { Card } from '@/lib/ui'
+import { Button } from '@/lib/ui'
 import { mockAgencyStats, mockBusinesses } from '@/lib/mock-data'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle, BarChart3, ExternalLink, Download } from 'lucide-react'
@@ -91,6 +92,7 @@ export default function AgencyDashboardPage() {
       />
 
       <div className="max-w-7xl mx-auto px-6 py-10">
+        <GuidedTasksPanel />
         <DashboardFilters onFilterChange={handleFilterChange} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-10">
           <StatCard
@@ -140,7 +142,7 @@ export default function AgencyDashboardPage() {
                   onClick={handlePlaybookClick}
                   variant="ghost"
                   size="sm"
-                  className="text-sm font-medium h-8 px-3 hover:bg-rose-100 dark:hover:bg-rose-900/30"
+                  className="text-sm font-medium h-8 px-3 hover:bg-rose-100 dark:hover:bg-rose-900/30 text-blue-600 dark:text-blue-400"
                   style={{ color: brandColor }}
                 >
                   Open Playbook →

@@ -1,7 +1,7 @@
 'use client';
 
-// Test imports from @farohq/ui
-import { Button, Card, CardHeader, CardTitle, CardContent, Input, Badge, cn } from '@farohq/ui';
+// Test imports from @/lib/ui (inlined UI components)
+import { Button, Card, CardHeader, CardTitle, CardContent, Input, Badge, cn } from '@/lib/ui';
 
 export function UITest() {
   return (

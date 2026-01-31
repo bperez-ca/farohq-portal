@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@clerk/nextjs'
-import { Button, Input, Label } from '@farohq/ui'
-import { BrandLogoSimple } from '../BrandLogo'
+import { Button, Input, Label } from '@/lib/ui'
+import { BrandLogo } from '@/components/BrandLogo'
+import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 import { AlertCircle, Loader2 } from 'lucide-react'
 
 interface LoginFormProps {
@@ -16,10 +17,15 @@ interface LoginFormProps {
 export function LoginForm({ logoUrl, primaryColor = '#2563eb', returnTo = '/dashboard' }: LoginFormProps) {
   const router = useRouter()
   const { signIn, isLoaded } = useAuth()
+  const { theme, loading: isBrandThemeLoading } = useBrandTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  const tier = theme?.tier
+  const isFullWhiteLabel = tier === 'growth' || tier === 'scale'
+  const displayLogoUrl = logoUrl || theme?.logo_url
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,15 +58,33 @@ export function LoginForm({ logoUrl, primaryColor = '#2563eb', returnTo = '/dash
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Brand Logo */}
-      {logoUrl && (
+      {/* Brand Logo - Tier-based display */}
+      {isFullWhiteLabel ? (
+        // Full white-label tiers: always show logo area (agency logo or spinner)
         <div className="mb-6 flex justify-center">
-          <BrandLogoSimple
-            logoUrl={logoUrl}
-            alt="Brand Logo"
-            className="h-12 w-auto"
-          />
+          {isBrandThemeLoading || !displayLogoUrl ? (
+            <Loader2 className="h-12 w-12 text-gray-500 animate-spin" />
+          ) : (
+            <BrandLogo
+              logoUrl={displayLogoUrl}
+              alt="Brand Logo"
+              className="h-12 w-auto"
+              showText={false}
+            />
+          )}
         </div>
+      ) : (
+        // Lower tiers: only show if logoUrl provided (Faro logo)
+        logoUrl && (
+          <div className="mb-6 flex justify-center">
+            <BrandLogo
+              logoUrl={logoUrl}
+              alt="FaroHQ Logo"
+              className="h-12 w-auto"
+              showText={false}
+            />
+          </div>
+        )
       )}
 
       {error && (

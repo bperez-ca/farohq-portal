@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useUser, useAuth } from '@clerk/nextjs'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button } from '@farohq/ui'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button } from '@/lib/ui'
 import { Mail, CheckCircle2, AlertCircle, XCircle, Clock } from 'lucide-react'
 import axios from 'axios'
 

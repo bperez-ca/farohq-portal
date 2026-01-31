@@ -33,35 +33,24 @@ export async function GET(request: NextRequest) {
 }
 
 function getDefaultTheme(request?: NextRequest) {
-  // Use local SVG files from public folder
-  // These are served statically by Next.js and don't require external dependencies
-  // Use request origin to get the correct base URL (works on any port)
-  let baseUrl = '/';
-  if (request) {
-    const origin = request.nextUrl.origin;
-    baseUrl = origin;
-  } else {
-    // Fallback for when request is not available
-    baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  }
-  
+  // Return loading state theme with gray colors and no logo
   return {
     agency_id: 'dev-agency-id',
     domain: null,
     subdomain: null,
     domain_type: null,
     website: null,
-    logo_url: `${baseUrl}/logo.svg`,
-    favicon_url: `${baseUrl}/favicon.svg`,
-    primary_color: '#2563eb',
-    secondary_color: '#6b7280',
+    logo_url: null,
+    favicon_url: null,
+    primary_color: '#6b7280',
+    secondary_color: '#9ca3af',
     hide_powered_by: false,
     can_hide_powered_by: false,
     can_configure_domain: false,
     email_domain: null,
     ssl_status: null,
     theme_json: {
-      name: 'default-theme',
+      name: 'loading-theme',
       version: '1.0.0',
       typography: {
         font_family: 'Inter, system-ui, sans-serif',
@@ -69,9 +58,9 @@ function getDefaultTheme(request?: NextRequest) {
         line_height_base: '1.5',
       },
       colors: {
-        brand: '#2563eb',
-        brand_hover: '#1d4ed8',
-        accent: '#10b981',
+        brand: '#6b7280',
+        brand_hover: '#4b5563',
+        accent: '#9ca3af',
       },
     },
     verified_at: null,

@@ -12,7 +12,7 @@ import {
   AlertDescription,
   AlertTitle,
   Separator
-} from '@farohq/ui';
+} from '@/lib/ui';
 
 export default function TestUIPage() {
   return (
@@ -21,7 +21,7 @@ export default function TestUIPage() {
         <div>
           <h1 className="text-4xl font-bold mb-2">UI Component Test Page</h1>
           <p className="text-muted-foreground">
-            Testing all components from @farohq/ui package
+            Testing all components from @/lib/ui (inlined UI components)
           </p>
         </div>
 

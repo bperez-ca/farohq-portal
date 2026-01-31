@@ -4,9 +4,7 @@ module.exports = {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
-    // Include UI package source for Tailwind class scanning
-    // Use node_modules path which works in both local and Docker contexts
-    './node_modules/@farohq/ui/src/**/*.{js,ts,jsx,tsx}',
+    // UI components are now inlined, no need to scan node_modules
   ],
   darkMode: ['class'],
   theme: {
@@ -18,6 +16,25 @@ module.exports = {
         full: '999px',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        // Theme-controlled component border radius
+        'button': 'var(--border-radius-button-default)',
+        'button-rounded': 'var(--border-radius-button-rounded)',
+        'button-square': 'var(--border-radius-button-square)',
+        'card': 'var(--border-radius-card-default)',
+        'card-rounded': 'var(--border-radius-card-rounded)',
+        'card-square': 'var(--border-radius-card-square)',
+        'panel': 'var(--border-radius-panel-default)',
+        'panel-rounded': 'var(--border-radius-panel-rounded)',
+        'panel-square': 'var(--border-radius-panel-square)',
+        'tile': 'var(--border-radius-tile-default)',
+        'tile-rounded': 'var(--border-radius-tile-rounded)',
+        'tile-square': 'var(--border-radius-tile-square)',
+        'badge': 'var(--border-radius-badge-default)',
+        'badge-rounded': 'var(--border-radius-badge-rounded)',
+        'badge-square': 'var(--border-radius-badge-square)',
+        'input': 'var(--border-radius-input-default)',
+        'input-rounded': 'var(--border-radius-input-rounded)',
+        'input-square': 'var(--border-radius-input-square)',
       },
       colors: {
         background: 'hsl(var(--background))',

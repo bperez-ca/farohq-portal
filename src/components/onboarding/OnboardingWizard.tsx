@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { BrandingForm } from './BrandingForm'
-import { LocationForm } from './LocationForm'
-import { SuccessScreen } from './SuccessScreen'
-import { Card } from '@farohq/ui'
+import { useState, useEffect } from 'react'
+import { BrandingForm } from '@/components/onboarding/BrandingForm'
+import { LocationForm } from '@/components/onboarding/LocationForm'
+import { ConnectGbpStep } from '@/components/onboarding/ConnectGbpStep'
+import { SuccessScreen } from '@/components/onboarding/SuccessScreen'
+import { trackOnboardingStep } from '@/lib/analytics'
 import { CheckCircle2 } from 'lucide-react'
 
 export interface OnboardingData {
@@ -14,22 +15,25 @@ export interface OnboardingData {
   faviconUrl?: string
   brandColor: string
   secondaryColor?: string
-  website?: string // Optional: Agency website (captured during onboarding)
+  website?: string
   customDomain?: string
-  subdomain?: string // Auto-generated for lower tiers
-  
-  // Step 2: Location
+  subdomain?: string
+
+  // Step 2: First Client
   businessName: string
   industry: string
   city: string
   phone: string
   gbpUrl?: string
-  
+
   // Created resources
   tenantId?: string
+  clientId?: string
   locationId?: string
-  tier?: string // Current tier (starter, growth, scale)
+  tier?: string
 }
+
+const STEP_LABELS = ['Agency', 'First client', 'Connect GBP', 'Done'] as const
 
 export function OnboardingWizard() {
   const [step, setStep] = useState(1)
@@ -48,93 +52,73 @@ export function OnboardingWizard() {
 
   const handleStep1Complete = (step1Data: Partial<OnboardingData>) => {
     updateData(step1Data)
+    trackOnboardingStep(1)
     setStep(2)
   }
 
   const handleStep2Complete = (step2Data: Partial<OnboardingData>) => {
     updateData(step2Data)
+    trackOnboardingStep(2)
     setStep(3)
   }
+
+  const handleStep3Complete = () => {
+    trackOnboardingStep(3)
+    setStep(4)
+  }
+
+  useEffect(() => {
+    if (step === 4) trackOnboardingStep(4)
+  }, [step])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-6">
       <div className="w-full max-w-2xl">
-        {/* Progress Indicator */}
+        {/* Progress indicator — UX-001: 4 steps */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-4">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                step >= 1
-                  ? 'bg-brand text-white'
-                  : 'bg-slate-200 dark:bg-slate-700'
-              }`}
-            >
-              {step > 1 ? (
-                <CheckCircle2 className="w-5 h-5" />
-              ) : (
-                '1'
-              )}
-            </div>
-            <div
-              className={`h-0.5 transition-colors ${
-                step >= 2 ? 'w-16 bg-brand' : 'w-16 bg-slate-200 dark:bg-slate-700'
-              }`}
-            />
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                step >= 2
-                  ? 'bg-brand text-white'
-                  : 'bg-slate-200 dark:bg-slate-700'
-              }`}
-            >
-              {step > 2 ? (
-                <CheckCircle2 className="w-5 h-5" />
-              ) : (
-                '2'
-              )}
-            </div>
-            <div
-              className={`h-0.5 transition-colors ${
-                step >= 3 ? 'w-16 bg-brand' : 'w-16 bg-slate-200 dark:bg-slate-700'
-              }`}
-            />
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                step >= 3
-                  ? 'bg-brand text-white'
-                  : 'bg-slate-200 dark:bg-slate-700'
-              }`}
-            >
-              3
-            </div>
+          <div className="flex items-center justify-center gap-1 sm:gap-2 text-sm text-muted-foreground mb-2">
+            {STEP_LABELS.map((label, i) => (
+              <span key={label} className="sr-only sm:not-sr-only sm:inline">
+                {i > 0 && <span className="text-slate-300 dark:text-slate-600 mx-0.5">·</span>}
+                <span className={step >= i + 1 ? 'font-medium' : ''}>{label}</span>
+              </span>
+            ))}
+          </div>
+          <div className="flex items-center justify-center gap-0.5 sm:gap-1">
+            {[1, 2, 3, 4].map((s) => (
+              <div key={s} className="flex items-center">
+                <div
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-colors text-sm ${
+                    step >= s
+                      ? 'bg-brand text-white'
+                      : 'bg-slate-200 dark:bg-slate-700'
+                  }`}
+                >
+                  {step > s ? <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" /> : s}
+                </div>
+                {s < 4 && (
+                  <div
+                    className={`h-0.5 w-3 sm:w-4 transition-colors ${
+                      step > s ? 'bg-brand' : 'bg-slate-200 dark:bg-slate-700'
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Step Content */}
         {step === 1 && (
-          <BrandingForm
-            data={data}
-            onComplete={handleStep1Complete}
-          />
+          <BrandingForm data={data} onComplete={handleStep1Complete} />
         )}
-
         {step === 2 && (
-          <LocationForm
-            data={data}
-            onComplete={handleStep2Complete}
-          />
+          <LocationForm data={data} onComplete={handleStep2Complete} />
         )}
-
         {step === 3 && (
-          <SuccessScreen data={data} />
+          <ConnectGbpStep data={data} onComplete={handleStep3Complete} />
         )}
+        {step === 4 && <SuccessScreen data={data} />}
       </div>
     </div>
   )
 }
-
-
-
-
-
-

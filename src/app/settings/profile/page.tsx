@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { OrgSelector } from '@/components/OrgSelector'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
-import { Button } from '@farohq/ui'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
+import { Button } from '@/lib/ui'
 
 interface BackendUserInfo {
   user_id: string

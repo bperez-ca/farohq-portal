@@ -4,6 +4,27 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import axios from 'axios'
 
+// Helper to get text color for background (import from color-utils if available)
+const getLuminance = (hex: string): number => {
+  try {
+    const cleanHex = hex.replace('#', '')
+    const r = parseInt(cleanHex.slice(0, 2), 16) / 255
+    const g = parseInt(cleanHex.slice(2, 4), 16) / 255
+    const b = parseInt(cleanHex.slice(4, 6), 16) / 255
+    const [rs, gs, bs] = [r, g, b].map(val => {
+      return val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4)
+    })
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs
+  } catch {
+    return 0.5
+  }
+}
+
+const getTextColorForBackground = (backgroundColor: string): string => {
+  const luminance = getLuminance(backgroundColor)
+  return luminance < 0.5 ? '#ffffff' : '#1f2937'
+}
+
 interface BrandThemeProviderProps {
   children: React.ReactNode
 }
@@ -123,15 +144,24 @@ const applyBrandTheme = (brandTheme: BrandTheme) => {
 
   // Apply primary color as CSS variable
   if (primaryColor) {
-    root.style.setProperty('--brand-color', primaryColor)
+    root.style.setProperty('--brand-color', primaryColor, 'important')
     // Calculate hover color (darken by 10%) or use from theme_json
     const hoverColor = brandHover || darkenColor(primaryColor, 0.1)
-    root.style.setProperty('--brand-color-hover', hoverColor)
+    root.style.setProperty('--brand-color-hover', hoverColor, 'important')
+    
+    // Automatically set text color for primary color based on background darkness
+    const primaryTextColor = getTextColorForBackground(primaryColor)
+    root.style.setProperty('--brand-color-text', primaryTextColor, 'important')
   }
 
   // Apply secondary color as CSS variable
   if (secondaryColor) {
     root.style.setProperty('--brand-secondary', secondaryColor)
+    root.style.setProperty('--brand-secondary-color', secondaryColor)
+    
+    // Automatically set text color for secondary color based on background darkness
+    const secondaryTextColor = getTextColorForBackground(secondaryColor)
+    root.style.setProperty('--brand-secondary-text', secondaryTextColor, 'important')
   }
 
   // Update favicon dynamically
@@ -141,8 +171,8 @@ const applyBrandTheme = (brandTheme: BrandTheme) => {
 
   // Update page title globally with business name
   if (typeof document !== 'undefined') {
-    const businessName = brandTheme.tenant_name || 'Faro'
-    document.title = `${businessName} - Portal`
+    const businessName = brandTheme.tenant_name || ''
+    document.title = businessName ? `${businessName} - Portal` : 'Portal'
   }
 
   // Apply brand colors to Tailwind variables
@@ -150,15 +180,62 @@ const applyBrandTheme = (brandTheme: BrandTheme) => {
     // Convert hex to HSL for Tailwind compatibility
     const hsl = hexToHsl(primaryColor)
     if (hsl) {
-      root.style.setProperty('--primary', `${hsl.h} ${hsl.s}% ${hsl.l}%`)
+      const isDark = document.documentElement.classList.contains('dark')
+      
+      // Ensure minimum lightness for contrast in light mode
+      const lightLightness = Math.min(hsl.l, 53)
+      // Increase lightness for dark mode contrast
+      const darkLightness = Math.max(hsl.l + 15, 65)
+      
+      // Use appropriate lightness based on current theme
+      const currentLightness = isDark ? darkLightness : lightLightness
+      
+      // Set primary color for current theme with !important to override defaults
+      root.style.setProperty('--primary', `${hsl.h} ${hsl.s}% ${currentLightness}%`, 'important')
+      
+      // Also set ring color (slightly darker for better visibility)
+      root.style.setProperty('--ring', `${hsl.h} ${hsl.s}% ${Math.max(currentLightness - 5, 20)}%`, 'important')
+      
+      // Set primary foreground based on background darkness (automatic text color)
+      // Use the calculated text color from getTextColorForBackground
+      const primaryTextColor = getTextColorForBackground(primaryColor)
+      if (primaryTextColor === '#ffffff') {
+        root.style.setProperty('--primary-foreground', '210 40% 98%', 'important') // White text
+      } else {
+        root.style.setProperty('--primary-foreground', '222.2 47.4% 11.2%', 'important') // Dark text
+      }
     }
+  } else {
+    // If no primary color, ensure --primary is still set to default (for links)
+    const isDark = document.documentElement.classList.contains('dark')
+    const defaultPrimary = isDark ? '217.2 91.2% 59.8%' : '221.2 83.2% 53.3%'
+    root.style.setProperty('--primary', defaultPrimary, 'important')
   }
 
   if (secondaryColor) {
     const hsl = hexToHsl(secondaryColor)
     if (hsl) {
-      root.style.setProperty('--secondary', `${hsl.h} ${hsl.s}% ${hsl.l}%`)
+      // Update Tailwind secondary with important flag
+      // For links, we want a readable color, so adjust lightness if needed
+      const isDark = document.documentElement.classList.contains('dark')
+      // Ensure secondary color is readable for links (not too light in light mode, not too dark in dark mode)
+      const linkLightness = isDark 
+        ? Math.max(hsl.l, 60) // At least 60% lightness in dark mode
+        : Math.min(hsl.l, 50) // At most 50% lightness in light mode
+      
+      root.style.setProperty('--secondary', `${hsl.h} ${hsl.s}% ${linkLightness}%`, 'important')
+      
+      // Calculate appropriate foreground color for contrast
+      const foregroundLightness = hsl.l > 50 ? 11.2 : 98
+      root.style.setProperty('--secondary-foreground', 
+        isDark ? '210 40% 98%' : `222.2 47.4% ${foregroundLightness}%`, 'important'
+      )
     }
+  } else {
+    // If no secondary color, set default secondary for links
+    const isDark = document.documentElement.classList.contains('dark')
+    const defaultSecondary = isDark ? '210 40% 96.1%' : '210 40% 40%'
+    root.style.setProperty('--secondary', defaultSecondary, 'important')
   }
 
   // Apply typography from theme_json
@@ -185,19 +262,135 @@ const applyBrandTheme = (brandTheme: BrandTheme) => {
   }
 
   // Apply border radius from theme_json
-  if (brandTheme.theme_json?.spacing?.border_radius) {
-    root.style.setProperty('--radius', brandTheme.theme_json.spacing.border_radius)
+  // Support both legacy single value and new component-specific structure
+  if (brandTheme.theme_json?.spacing) {
+    const spacing = brandTheme.theme_json.spacing as any
+    
+    // Legacy support: single border_radius value
+    if (typeof spacing.border_radius === 'string') {
+      root.style.setProperty('--radius', spacing.border_radius)
+    }
+    
+    // New structure: component-specific border radius
+    if (spacing.border_radius && typeof spacing.border_radius === 'object') {
+      const borderRadius = spacing.border_radius as any
+      
+      // Button border radius
+      if (borderRadius.button) {
+        root.style.setProperty('--border-radius-button-default', borderRadius.button.default || '999px')
+        root.style.setProperty('--border-radius-button-rounded', borderRadius.button.rounded || '8px')
+        root.style.setProperty('--border-radius-button-square', borderRadius.button.square || '0px')
+      } else {
+        // Set defaults
+        root.style.setProperty('--border-radius-button-default', '999px')
+        root.style.setProperty('--border-radius-button-rounded', '8px')
+        root.style.setProperty('--border-radius-button-square', '0px')
+      }
+      
+      // Card border radius
+      if (borderRadius.card) {
+        root.style.setProperty('--border-radius-card-default', borderRadius.card.default || '12px')
+        root.style.setProperty('--border-radius-card-rounded', borderRadius.card.rounded || '16px')
+        root.style.setProperty('--border-radius-card-square', borderRadius.card.square || '0px')
+      } else {
+        root.style.setProperty('--border-radius-card-default', '12px')
+        root.style.setProperty('--border-radius-card-rounded', '16px')
+        root.style.setProperty('--border-radius-card-square', '0px')
+      }
+      
+      // Panel border radius
+      if (borderRadius.panel) {
+        root.style.setProperty('--border-radius-panel-default', borderRadius.panel.default || '8px')
+        root.style.setProperty('--border-radius-panel-rounded', borderRadius.panel.rounded || '12px')
+        root.style.setProperty('--border-radius-panel-square', borderRadius.panel.square || '0px')
+      } else {
+        root.style.setProperty('--border-radius-panel-default', '8px')
+        root.style.setProperty('--border-radius-panel-rounded', '12px')
+        root.style.setProperty('--border-radius-panel-square', '0px')
+      }
+      
+      // Tile border radius
+      if (borderRadius.tile) {
+        root.style.setProperty('--border-radius-tile-default', borderRadius.tile.default || '4px')
+        root.style.setProperty('--border-radius-tile-rounded', borderRadius.tile.rounded || '8px')
+        root.style.setProperty('--border-radius-tile-square', borderRadius.tile.square || '0px')
+      } else {
+        root.style.setProperty('--border-radius-tile-default', '4px')
+        root.style.setProperty('--border-radius-tile-rounded', '8px')
+        root.style.setProperty('--border-radius-tile-square', '0px')
+      }
+      
+      // Badge border radius
+      if (borderRadius.badge) {
+        root.style.setProperty('--border-radius-badge-default', borderRadius.badge.default || '999px')
+        root.style.setProperty('--border-radius-badge-rounded', borderRadius.badge.rounded || '6px')
+        root.style.setProperty('--border-radius-badge-square', borderRadius.badge.square || '0px')
+      } else {
+        root.style.setProperty('--border-radius-badge-default', '999px')
+        root.style.setProperty('--border-radius-badge-rounded', '6px')
+        root.style.setProperty('--border-radius-badge-square', '0px')
+      }
+      
+      // Input border radius
+      if (borderRadius.input) {
+        root.style.setProperty('--border-radius-input-default', borderRadius.input.default || '6px')
+        root.style.setProperty('--border-radius-input-rounded', borderRadius.input.rounded || '8px')
+        root.style.setProperty('--border-radius-input-square', borderRadius.input.square || '0px')
+      } else {
+        root.style.setProperty('--border-radius-input-default', '6px')
+        root.style.setProperty('--border-radius-input-rounded', '8px')
+        root.style.setProperty('--border-radius-input-square', '0px')
+      }
+      
+      // Global fallback (for legacy components)
+      if (borderRadius.global) {
+        root.style.setProperty('--radius', borderRadius.global)
+      } else {
+        root.style.setProperty('--radius', '8px')
+      }
+    } else {
+      // No border radius config, set defaults
+      root.style.setProperty('--radius', '8px')
+      root.style.setProperty('--border-radius-button-default', '999px')
+      root.style.setProperty('--border-radius-button-rounded', '8px')
+      root.style.setProperty('--border-radius-button-square', '0px')
+      root.style.setProperty('--border-radius-card-default', '12px')
+      root.style.setProperty('--border-radius-card-rounded', '16px')
+      root.style.setProperty('--border-radius-card-square', '0px')
+      root.style.setProperty('--border-radius-panel-default', '8px')
+      root.style.setProperty('--border-radius-panel-rounded', '12px')
+      root.style.setProperty('--border-radius-panel-square', '0px')
+      root.style.setProperty('--border-radius-tile-default', '4px')
+      root.style.setProperty('--border-radius-tile-rounded', '8px')
+      root.style.setProperty('--border-radius-tile-square', '0px')
+      root.style.setProperty('--border-radius-badge-default', '999px')
+      root.style.setProperty('--border-radius-badge-rounded', '6px')
+      root.style.setProperty('--border-radius-badge-square', '0px')
+      root.style.setProperty('--border-radius-input-default', '6px')
+      root.style.setProperty('--border-radius-input-rounded', '8px')
+      root.style.setProperty('--border-radius-input-square', '0px')
+    }
+  } else {
+    // No spacing config, set defaults
+    root.style.setProperty('--radius', '8px')
   }
 }
 
-const applyDefaultTheme = () => {
+const applyLoadingTheme = () => {
   const root = document.documentElement
-  root.style.setProperty('--brand-color', '#2563eb')
-  root.style.setProperty('--brand-color-hover', '#1d4ed8')
-  root.style.setProperty('--brand-secondary', '#6b7280')
+  // Apply static gray colors for loading state
+  root.style.setProperty('--brand-color', '#6b7280')
+  root.style.setProperty('--brand-color-hover', '#4b5563')
+  root.style.setProperty('--brand-secondary', '#9ca3af')
+  // Set text colors for gray backgrounds (gray is medium, so use dark text)
+  root.style.setProperty('--brand-color-text', '#ffffff', 'important') // Gray background needs white text
+  root.style.setProperty('--brand-secondary-text', '#1f2937', 'important') // Light gray needs dark text
   // Reset typography to defaults
   root.style.setProperty('--brand-font', "'Inter', system-ui, sans-serif")
   root.style.setProperty('--font-family', "'Inter', system-ui, sans-serif")
+  // Set default primary color (blue) for loading state
+  root.style.setProperty('--primary', '221.2 83.2% 53.3%', 'important')
+  root.style.setProperty('--ring', '221.2 83.2% 53.3%', 'important')
 }
 
 export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
@@ -206,6 +399,11 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
   const [loading, setLoading] = useState(true)
   const [lastFetch, setLastFetch] = useState<number>(0)
   const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+
+  // Apply loading theme on initial mount
+  useEffect(() => {
+    applyLoadingTheme()
+  }, [])
 
   useEffect(() => {
     // Fetch brand theme based on tenantId (authenticated) or host (public)
@@ -233,6 +431,9 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
         // Use cached theme (only if not forcing re-fetch)
         applyBrandTheme(theme)
         return
+      } else if (!theme) {
+        // Apply loading theme while fetching
+        applyLoadingTheme()
       }
 
       try {
@@ -255,45 +456,55 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
             // Handle array response (take first brand)
             if (response.data && Array.isArray(response.data) && response.data.length > 0) {
               const brandData = response.data[0]
-              // Map the brand data to BrandTheme format
-              const themeData: BrandTheme = {
-                primary_color: brandData.primary_color,
-                secondary_color: brandData.secondary_color,
-                logo_url: brandData.logo_url,
-                favicon_url: brandData.favicon_url,
-                hide_powered_by: brandData.hide_powered_by,
-                can_hide_powered_by: brandData.can_hide_powered_by,
-                can_configure_domain: brandData.can_configure_domain,
-                tier: brandData.tier,
-                tenant_name: brandData.tenant?.name || brandData.tenant_name,
-                theme_json: brandData.theme_json,
+              // Check if brandData is valid
+              if (brandData && typeof brandData === 'object') {
+                // Map the brand data to BrandTheme format
+                const themeData: BrandTheme = {
+                  primary_color: brandData.primary_color,
+                  secondary_color: brandData.secondary_color,
+                  logo_url: brandData.logo_url,
+                  favicon_url: brandData.favicon_url,
+                  hide_powered_by: brandData.hide_powered_by,
+                  can_hide_powered_by: brandData.can_hide_powered_by,
+                  can_configure_domain: brandData.can_configure_domain,
+                  tier: brandData.tier,
+                  tenant_name: brandData.tenant?.name || brandData.tenant_name,
+                  theme_json: brandData.theme_json,
+                }
+                
+                setTheme(themeData)
+                setLastFetch(now)
+                applyBrandTheme(themeData)
+                return
               }
-              
-              setTheme(themeData)
-              setLastFetch(now)
-              applyBrandTheme(themeData)
-              return
-            } else if (response.data && !Array.isArray(response.data)) {
+            } else if (response.data && !Array.isArray(response.data) && typeof response.data === 'object') {
               // Single brand object
               const brandData = response.data
-              const themeData: BrandTheme = {
-                primary_color: brandData.primary_color,
-                secondary_color: brandData.secondary_color,
-                logo_url: brandData.logo_url,
-                favicon_url: brandData.favicon_url,
-                hide_powered_by: brandData.hide_powered_by,
-                can_hide_powered_by: brandData.can_hide_powered_by,
-                can_configure_domain: brandData.can_configure_domain,
-                tier: brandData.tier,
-                tenant_name: brandData.tenant?.name || brandData.tenant_name,
-                theme_json: brandData.theme_json,
+              // Check if brandData has required properties
+              if (brandData && typeof brandData === 'object') {
+                const themeData: BrandTheme = {
+                  primary_color: brandData.primary_color,
+                  secondary_color: brandData.secondary_color,
+                  logo_url: brandData.logo_url,
+                  favicon_url: brandData.favicon_url,
+                  hide_powered_by: brandData.hide_powered_by,
+                  can_hide_powered_by: brandData.can_hide_powered_by,
+                  can_configure_domain: brandData.can_configure_domain,
+                  tier: brandData.tier,
+                  tenant_name: brandData.tenant?.name || brandData.tenant_name,
+                  theme_json: brandData.theme_json,
+                }
+                
+                setTheme(themeData)
+                setLastFetch(now)
+                applyBrandTheme(themeData)
+                return
               }
-              
-              setTheme(themeData)
-              setLastFetch(now)
-              applyBrandTheme(themeData)
-              return
             }
+            
+            // If we get here, no valid brand data was found
+            applyLoadingTheme()
+            return
           } catch (brandsError) {
             // If /api/v1/brands fails, fall back to by-host endpoint
             console.warn('Failed to fetch from /api/v1/brands, trying by-host fallback:', brandsError)
@@ -324,7 +535,17 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
             themeData = response.data
           } else {
             // Need to map from brands endpoint format
-            const brandData = Array.isArray(response.data) ? response.data[0] : response.data
+            const brandData = Array.isArray(response.data) 
+              ? (response.data.length > 0 ? response.data[0] : null)
+              : response.data
+              
+            // Check if brandData exists and has required properties
+            if (!brandData || typeof brandData !== 'object') {
+              // No valid brand data, use loading theme
+              applyLoadingTheme()
+              return
+            }
+            
             themeData = {
               primary_color: brandData.primary_color,
               secondary_color: brandData.secondary_color,
@@ -343,13 +564,13 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
           setLastFetch(now)
           applyBrandTheme(themeData)
         } else {
-          // No data in response, use default theme
-          applyDefaultTheme()
+          // No data in response, use loading theme
+          applyLoadingTheme()
         }
       } catch (error) {
         console.error('Failed to fetch brand theme:', error)
-        // Use default theme if fetch fails
-        applyDefaultTheme()
+        // Use loading theme if fetch fails
+        applyLoadingTheme()
       } finally {
         setLoading(false)
       }
@@ -363,15 +584,31 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
       fetchBrandTheme() // Refetch immediately
     }
     
+    // Listen for theme changes (light/dark mode toggle)
+    const handleThemeChange = () => {
+      if (theme) {
+        // Re-apply theme when dark mode changes
+        applyBrandTheme(theme)
+      }
+    }
+    
     if (typeof window !== 'undefined') {
       window.addEventListener('brandThemeUpdated', handleBrandThemeUpdate)
       
+      // Watch for dark mode class changes
+      const observer = new MutationObserver(handleThemeChange)
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class'],
+      })
+      
       return () => {
         window.removeEventListener('brandThemeUpdated', handleBrandThemeUpdate)
+        observer.disconnect()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]) // Re-fetch when pathname changes (different subdomain/domain)
+  }, [pathname, theme]) // Re-fetch when pathname changes (different subdomain/domain), re-apply when theme changes
 
   return (
     <BrandThemeContext.Provider value={{ theme, loading }}>

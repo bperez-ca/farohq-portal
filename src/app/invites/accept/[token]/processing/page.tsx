@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useUser, useAuth } from '@clerk/nextjs'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
 import { Loader2, AlertCircle } from 'lucide-react'
 import axios from 'axios'
 
@@ -110,17 +110,14 @@ export default function ProcessingInvitePage() {
         const orgsData = orgsResponse.data
         const orgCount = orgsData.count || (orgsData.orgs || []).length
 
-        // If user has tenant, redirect to dashboard
+        // If user has tenant, redirect to dashboard (skip connect stepper)
         if (orgCount > 0) {
-          // Try to set localStorage from first org if available
           const firstOrg = orgsData.orgs?.[0]
           if (firstOrg?.id) {
             localStorage.setItem('farohq_active_org_id', firstOrg.id)
           }
           setMessage('You already have an organization. Redirecting to dashboard...')
-          setTimeout(() => {
-            router.push('/dashboard')
-          }, 1000)
+          setTimeout(() => router.push('/dashboard'), 1000)
           return
         }
       } catch (orgsError: any) {
@@ -164,14 +161,14 @@ export default function ProcessingInvitePage() {
       }
 
       if (matchingInvite.status !== 'pending') {
-        // Invite already accepted - set tenant ID in localStorage before redirect for branding
+        // Invite already accepted - set tenant ID, redirect to connect or dashboard
         if (matchingInvite.tenant?.id) {
           localStorage.setItem('farohq_active_org_id', matchingInvite.tenant.id)
         }
-        setMessage('This invitation has already been accepted. Redirecting to dashboard...')
+        setMessage('This invitation has already been accepted. Redirecting...')
         setTimeout(() => {
-          router.push('/dashboard')
-        }, 2000)
+          router.push(`/invites/accept/${token}/connect`)
+        }, 1000)
         return
       }
 
@@ -193,12 +190,12 @@ export default function ProcessingInvitePage() {
         if (matchingInvite.tenant?.id) {
           localStorage.setItem('farohq_active_org_id', matchingInvite.tenant.id)
         }
-        
-        // Successfully accepted - redirect to dashboard
-        setMessage('Invitation accepted! Redirecting to dashboard...')
+
+        // UX-002: Redirect to connect stepper (Google/WhatsApp), then dashboard
+        setMessage('Invitation accepted! Redirecting to connect your channels...')
         setTimeout(() => {
-          router.push('/dashboard')
-        }, 1500)
+          router.push(`/invites/accept/${token}/connect`)
+        }, 1000)
       } catch (acceptError: any) {
         console.error('Failed to accept invite:', acceptError)
         

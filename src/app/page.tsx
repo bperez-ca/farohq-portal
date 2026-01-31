@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowRightIcon, ChartBarIcon, CloudIcon, ShieldCheckIcon } from '@heroicons/react/24/outline'
-import { BrandLogo } from '@farohq/ui'
+import { BrandLogo } from '@/lib/ui'
 
 export default function HomePage() {
   return (

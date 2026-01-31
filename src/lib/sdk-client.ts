@@ -6,7 +6,7 @@
  */
 
 import { auth } from '@clerk/nextjs/server';
-import { Configuration, BrandApi, FilesApi, TenantsApi } from '@farohq/sdk';
+import { Configuration, BrandApi, FilesApi, TenantsApi } from '@/lib/sdk';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
 

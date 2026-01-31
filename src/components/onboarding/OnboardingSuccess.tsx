@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@farohq/ui'
+import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
 import { CheckCircle2 } from 'lucide-react'
 
 interface OnboardingSuccessProps {
