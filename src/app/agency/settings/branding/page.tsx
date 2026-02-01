@@ -1326,7 +1326,7 @@ export default function BrandingSettingsPage() {
                 </p>
                 {brandData.domain && (
                   <div className="mt-4">
-                    <DomainVerification brandId={brandData.agency_id} domain={brandData.domain} />
+                    <DomainVerification brandId={brandData.agency_id} domain={brandData.domain} tier={brandData.tier} />
                   </div>
                 )}
               </div>
