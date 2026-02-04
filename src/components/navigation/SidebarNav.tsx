@@ -55,7 +55,7 @@ export function SidebarNav() {
   const { theme, toggleTheme } = useTheme()
   const { theme: brandTheme, loading: isBrandThemeLoading } = useBrandTheme()
   const pathname = usePathname()
-  const [orgInfo, setOrgInfo] = useState<{ name: string; logoUrl?: string } | null>(null)
+  const [orgInfo, setOrgInfo] = useState<{ name: string; logoUrl?: string; tier?: string } | null>(null)
   const [isLoadingOrgInfo, setIsLoadingOrgInfo] = useState(false)
 
   // Fetch organization info for branding (optimized with early return and request deduplication)
@@ -102,6 +102,7 @@ export function SidebarNav() {
               setOrgInfo({
                 name: selectedOrg.name || '',
                 logoUrl: selectedOrg.logo_url || selectedOrg.logoUrl,
+                tier: selectedOrg.tier || undefined,
               })
             }
           } else {
@@ -344,7 +345,7 @@ export function SidebarNav() {
 
       {/* User profile section */}
       <div className="p-3 border-t border-black/5 dark:border-white/10">
-        <UserProfileSection collapsed={collapsed} />
+        <UserProfileSection collapsed={collapsed} tier={orgInfo?.tier} />
       </div>
     </aside>
   )

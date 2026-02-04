@@ -18,9 +18,11 @@ import { useEffect, useState } from 'react'
 
 interface UserProfileSectionProps {
   collapsed?: boolean
+  /** Agency tier (e.g. starter, growth, scale) - displayed as badge when in agency context */
+  tier?: string
 }
 
-export function UserProfileSection({ collapsed = false }: UserProfileSectionProps) {
+export function UserProfileSection({ collapsed = false, tier }: UserProfileSectionProps) {
   const { user, isLoaded: userLoaded } = useUser()
   const { signOut } = useClerk()
   const { isLoaded: authLoaded, getToken } = useAuth()
@@ -72,6 +74,11 @@ export function UserProfileSection({ collapsed = false }: UserProfileSectionProp
     ? userRole.charAt(0).toUpperCase() + userRole.slice(1).toLowerCase()
     : null
 
+  // Format tier for display (capitalize)
+  const displayTier = tier 
+    ? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase()
+    : null
+
   const profileContent = (
     <div
       className={cn(
@@ -86,11 +93,16 @@ export function UserProfileSection({ collapsed = false }: UserProfileSectionProp
       {!collapsed && (
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate tracking-tight">{displayName}</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="text-xs text-muted-foreground truncate leading-relaxed">{email}</p>
             {displayRole && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
                 {displayRole}
+              </span>
+            )}
+            {displayTier && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium" title="Agency plan">
+                {displayTier}
               </span>
             )}
           </div>
@@ -110,11 +122,16 @@ export function UserProfileSection({ collapsed = false }: UserProfileSectionProp
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium tracking-tight">{displayName}</p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-xs text-muted-foreground leading-relaxed">{email}</p>
                       {displayRole && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
                           {displayRole}
+                        </span>
+                      )}
+                      {displayTier && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                          {displayTier}
                         </span>
                       )}
                     </div>
@@ -150,7 +167,14 @@ export function UserProfileSection({ collapsed = false }: UserProfileSectionProp
         <DropdownMenuLabel>
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium">{displayName}</p>
-            <p className="text-xs text-muted-foreground">{email}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs text-muted-foreground">{email}</p>
+              {displayTier && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                  {displayTier}
+                </span>
+              )}
+            </div>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
