@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { Card, Button, Badge, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Input, Label } from '@/lib/ui'
+import { Card, Button, Badge } from '@/lib/ui'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
-import { Loader2, Building2, ChevronRight, Plus } from 'lucide-react'
+import { Loader2, Building2, ChevronRight, Plus, Zap } from 'lucide-react'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
+import { AddClientFlow } from '@/components/agency/AddClientFlow'
+import { ActivateClientModal } from '@/components/agency/ActivateClientModal'
 
 interface Client {
   id: string
@@ -16,6 +18,8 @@ interface Client {
   slug: string
   tier: string
   status: string
+  lifecycle?: string
+  layer?: string | null
   created_at: string
   updated_at: string
 }
@@ -29,10 +33,7 @@ export default function AgencyClientsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [addName, setAddName] = useState('')
-  const [addSlug, setAddSlug] = useState('')
-  const [addSubmitting, setAddSubmitting] = useState(false)
-  const [addError, setAddError] = useState<string | null>(null)
+  const [activateClient, setActivateClient] = useState<Client | null>(null)
 
   // Stable orgId: use activeOrgId or first org - avoids duplicate fetches when activeOrgId is set asynchronously
   const orgId = activeOrgId || orgs[0]?.id
@@ -74,60 +75,26 @@ export default function AgencyClientsPage() {
     return () => controller.abort()
   }, [orgId, sessionLoading, orgs.length])
 
+  const refreshClients = useCallback(async () => {
+    if (!orgId) return
+    try {
+      const res = await authenticatedFetch(`/api/v1/tenants/${orgId}/clients`, {
+        headers: { 'X-Tenant-ID': orgId },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setClients(data?.clients || [])
+      }
+    } catch {
+      // keep existing list
+    }
+  }, [orgId])
+
   const handleViewClient = (clientId: string) => {
     router.push(`/agency/clients/${clientId}`)
   }
 
-  const handleAddNameChange = (name: string) => {
-    setAddName(name)
-    const slug = name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'client'
-    setAddSlug(slug)
-  }
-
-  const handleAddClient = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!orgId || !addName.trim()) return
-    setAddSubmitting(true)
-    setAddError(null)
-    try {
-      const res = await authenticatedFetch(`/api/v1/tenants/${orgId}/clients`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': orgId,
-        },
-        body: JSON.stringify({
-          name: addName.trim(),
-          slug: addSlug.trim() || 'client',
-          tier: 'starter',
-        }),
-      })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || errData.details || 'Failed to create client')
-      }
-      const newClient = await res.json()
-      setClients((prev) => [...prev, newClient])
-      setAddDialogOpen(false)
-      setAddName('')
-      setAddSlug('')
-    } catch (err) {
-      setAddError(err instanceof Error ? err.message : 'Failed to create client')
-    } finally {
-      setAddSubmitting(false)
-    }
-  }
-
-  const openAddDialog = () => {
-    setAddName('')
-    setAddSlug('')
-    setAddError(null)
-    setAddDialogOpen(true)
-  }
+  const openAddDialog = () => setAddDialogOpen(true)
 
   if (sessionLoading || loading) {
     return (
@@ -212,99 +179,107 @@ export default function AgencyClientsPage() {
               </p>
             </div>
             <div className="divide-y divide-black/5 dark:divide-white/10">
-              {clients.map((client) => (
-                <div
-                  key={client.id}
-                  className="p-5 flex items-center justify-between hover:bg-black/[0.02] dark:hover:bg-white/[0.05] transition-colors group cursor-pointer"
-                  onClick={() => handleViewClient(client.id)}
-                >
-                  <div className="flex items-center gap-4">
+              {clients.map((client) => {
+                const isLead = client.lifecycle === 'lead' || !client.lifecycle
+                return (
+                  <div
+                    key={client.id}
+                    className="p-5 flex items-center justify-between hover:bg-black/[0.02] dark:hover:bg-white/[0.05] transition-colors group"
+                  >
                     <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-medium text-lg flex-shrink-0"
-                      style={{ backgroundColor: brandColor }}
+                      className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
+                      onClick={() => handleViewClient(client.id)}
                     >
-                      {client.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-medium text-base mb-1">{client.name}</div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="font-mono">{client.slug}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {client.tier}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          className={
-                            client.status === 'active'
-                              ? 'text-green-700 dark:text-green-400 border-green-200'
-                              : 'text-muted-foreground'
-                          }
-                        >
-                          {client.status}
-                        </Badge>
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-medium text-lg flex-shrink-0"
+                        style={{ backgroundColor: brandColor }}
+                      >
+                        {client.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-base mb-1">{client.name}</div>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                          <span className="font-mono">{client.slug}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {client.tier}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={
+                              isLead
+                                ? 'text-amber-700 dark:text-amber-400 border-amber-200'
+                                : 'text-green-700 dark:text-green-400 border-green-200'
+                            }
+                          >
+                            {isLead ? 'Lead' : 'Active'}
+                          </Badge>
+                          {!isLead && client.layer && (
+                            <Badge variant="secondary" className="text-xs capitalize">
+                              {client.layer}
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={
+                              client.status === 'active'
+                                ? 'text-green-700 dark:text-green-400 border-green-200'
+                                : 'text-muted-foreground'
+                            }
+                          >
+                            {client.status}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {isLead && (
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setActivateClient(client)
+                          }}
+                          style={{ backgroundColor: brandColor }}
+                          className="text-white"
+                        >
+                          <Zap className="w-4 h-4 mr-1" />
+                          Activate
+                        </Button>
+                      )}
+                      <button
+                        type="button"
+                        className="p-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => handleViewClient(client.id)}
+                        aria-label="View client"
+                      >
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-                </div>
-              ))}
+                )
+              })}
             </div>
           </Card>
         )}
 
-        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-          <DialogContent>
-            <form onSubmit={handleAddClient}>
-              <DialogHeader>
-                <DialogTitle>Add Client</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                {addError && (
-                  <p className="text-sm text-destructive">{addError}</p>
-                )}
-                <div className="grid gap-2">
-                  <Label htmlFor="add-name">Name</Label>
-                  <Input
-                    id="add-name"
-                    value={addName}
-                    onChange={(e) => handleAddNameChange(e.target.value)}
-                    placeholder="Client business name"
-                    required
-                    disabled={addSubmitting}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="add-slug">Slug</Label>
-                  <Input
-                    id="add-slug"
-                    value={addSlug}
-                    onChange={(e) => setAddSlug(e.target.value)}
-                    placeholder="client-slug"
-                    disabled={addSubmitting}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setAddDialogOpen(false)}
-                  disabled={addSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  style={{ backgroundColor: brandColor }}
-                  className="text-white"
-                  disabled={addSubmitting}
-                >
-                  {addSubmitting ? 'Creating...' : 'Add Client'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <AddClientFlow
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          orgId={orgId!}
+          onSuccess={refreshClients}
+          brandColor={brandColor}
+        />
+        {activateClient && (
+          <ActivateClientModal
+            open={!!activateClient}
+            onOpenChange={(open) => !open && setActivateClient(null)}
+            orgId={orgId!}
+            clientId={activateClient.id}
+            clientName={activateClient.name}
+            onSuccess={refreshClients}
+            brandColor={brandColor}
+          />
+        )}
       </div>
     </div>
   )

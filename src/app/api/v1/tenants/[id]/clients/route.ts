@@ -54,9 +54,26 @@ export async function GET(
   }
 }
 
+/** Request body for creating a client: place_id path, manual path, or legacy name+slug+tier */
+type CreateClientBody = {
+  place_id?: string
+  client_name_override?: string
+  location_label?: string
+  name?: string
+  slug?: string
+  tier?: string
+  address?: Record<string, unknown>
+  phone?: string
+  website?: string
+  social_links?: Record<string, string>
+}
+
 /**
  * POST /api/v1/tenants/{id}/clients
- * Create a new client (SMB) under the tenant. Used in onboarding "First Client" step (UX-001).
+ * Create a new client (SMB) under the tenant.
+ * Accepts: (1) place_id + optional client_name_override, location_label, tier
+ *          (2) name + optional address, phone, website, social_links, slug, tier (manual)
+ *          (3) name, slug, tier (legacy, client only)
  */
 export async function POST(
   request: NextRequest,
@@ -74,17 +91,23 @@ export async function POST(
     }
 
     const validatedTenantId = await getValidatedTenantId(tenantId, token, request);
-    const body = await request.json();
-    const { name, slug, tier } = body as { name?: string; slug?: string; tier?: string };
+    const body = (await request.json()) as CreateClientBody;
 
-    if (!name || !slug) {
-      return NextResponse.json(
-        { error: 'name and slug are required' },
-        { status: 400 }
-      );
+    // Legacy path: require name and slug if not using place_id or manual with fields
+    if (!body.place_id && !(body.name && (body.address || body.phone || body.website))) {
+      if (!body.name?.trim() || !(body.slug?.trim() || body.name?.trim())) {
+        return NextResponse.json(
+          { error: 'name and slug are required when not using place_id or full manual fields' },
+          { status: 400 }
+        );
+      }
     }
 
-    const tierValue = tier && ['starter', 'growth', 'scale'].includes(tier) ? tier : 'starter';
+    const tierValue = body.tier && ['starter', 'growth', 'scale'].includes(body.tier) ? body.tier : 'starter';
+    const payload: CreateClientBody & { tier: string } = {
+      ...body,
+      tier: tierValue,
+    };
 
     const clientResponse = await fetch(`${API_BASE_URL}/api/v1/tenants/${validatedTenantId}/clients`, {
       method: 'POST',
@@ -93,7 +116,7 @@ export async function POST(
         'X-Tenant-ID': validatedTenantId,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name, slug, tier: tierValue }),
+      body: JSON.stringify(payload),
     });
 
     if (!clientResponse.ok) {

@@ -99,3 +99,49 @@ export async function PUT(
     );
   }
 }
+
+/**
+ * DELETE /api/v1/clients/{id}
+ * Soft-delete (archive) a client. Client is hidden from lists but not removed from DB.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: clientId } = await params;
+
+    const token = await getClerkToken();
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/clients/${clientId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      return NextResponse.json(
+        { error: 'Failed to archive client', details: errorText },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (error) {
+    safeLogError('Delete client API error', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { error: 'Failed to archive client', details: message },
+      { status: 500 }
+    );
+  }
+}
