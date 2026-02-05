@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import type { BrandTheme } from '@/lib/theme';
-import { applyBrandTheme, DEFAULT_THEME, clearBrandTheme } from '@/lib/theme';
+import { applyBrandTheme, clearBrandTheme } from '@/lib/theme';
 
 interface UseBrandThemeOptions {
   apiUrl?: string;

@@ -1,31 +1,25 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard'
+import { useAuthSessionOptional } from '@/contexts/AuthSessionContext'
 
 /** UX-001: Unified onboarding wizard — Agency → First Client → Connect GBP → Success. */
 export default function OnboardingPage() {
   const router = useRouter()
   const { user, isLoaded } = useUser()
+  const session = useAuthSessionOptional()
 
   useEffect(() => {
     if (!isLoaded || !user) return
+    if (session?.loading) return
 
-    async function checkOrgs() {
-      try {
-        const res = await fetch('/api/v1/tenants/my-orgs/count', { credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.count > 0) router.push('/agency/dashboard')
-        }
-      } catch {
-        // continue with onboarding
-      }
+    if (session && session.orgCount > 0) {
+      router.push('/agency/dashboard')
     }
-    checkOrgs()
-  }, [isLoaded, user, router])
+  }, [isLoaded, user, session?.loading, session?.orgCount, router])
 
   if (!isLoaded) {
     return (

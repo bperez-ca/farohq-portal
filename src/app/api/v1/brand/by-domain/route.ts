@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function getDefaultTheme(request?: NextRequest) {
+function getDefaultTheme(_request?: NextRequest) {
   // Return loading state theme with gray colors and no logo
   return {
     agency_id: 'dev-agency-id',

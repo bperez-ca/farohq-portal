@@ -5,7 +5,7 @@ import { serverApiRequest, getClerkToken } from '@/lib/server-api-client';
  * GET /api/v1/tenants/my-orgs
  * Get list of organizations/tenants for the current user
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const token = await getClerkToken();
     if (!token) {

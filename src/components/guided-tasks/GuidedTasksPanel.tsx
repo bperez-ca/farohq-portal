@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Card } from '@/lib/ui'
-import { Button } from '@/lib/ui'
 import { CheckCircle2, Circle, ChevronDown, ChevronUp } from 'lucide-react'
 
 /** UX-003: First-session Guided Tasks — 3–5 items, persistent, localStorage. */
@@ -43,7 +42,7 @@ function setDone(id: string, done: boolean) {
   if (done) set.add(id)
   else set.delete(id)
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(set)))
   } catch {}
 }
 

@@ -171,7 +171,7 @@ export function WeeklyDigestModal({
 
             <div className="text-center text-xs text-muted-foreground">
               <p>
-                You're receiving this because you're subscribed to weekly reports.
+                You&apos;re receiving this because you&apos;re subscribed to weekly reports.
               </p>
               <p className="mt-1">
                 © {new Date().getFullYear()} {theme.brandName}. All rights reserved.

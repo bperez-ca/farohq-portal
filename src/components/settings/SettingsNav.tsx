@@ -15,7 +15,6 @@ export function SettingsNav() {
   const pathname = usePathname()
   const { theme } = useBrandTheme()
   const brandColor = theme?.primary_color || '#2563eb'
-  const activeBgColor = `${brandColor}15`
 
   return (
     <div className="mb-6 border-b border-border">

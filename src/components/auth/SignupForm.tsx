@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
+import { useSignUp } from '@clerk/nextjs'
 import { Button, Input, Label } from '@/lib/ui'
 import { BrandLogo } from '@/components/BrandLogo'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
@@ -16,7 +17,7 @@ interface SignupFormProps {
 
 export function SignupForm({ logoUrl, primaryColor = '#2563eb', returnTo = '/dashboard' }: SignupFormProps) {
   const router = useRouter()
-  const { signUp, isLoaded } = useAuth()
+  const { signUp, isLoaded } = useSignUp()
   const { theme, loading: isBrandThemeLoading } = useBrandTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -173,13 +174,13 @@ export function SignupForm({ logoUrl, primaryColor = '#2563eb', returnTo = '/das
       </Button>
 
       <div className="text-center text-sm text-muted-foreground">
-        <a
+        <Link
           href="/signin"
           className="hover:underline"
           style={{ color: primaryColor }}
         >
           Already have an account? Sign in
-        </a>
+        </Link>
       </div>
     </form>
   )

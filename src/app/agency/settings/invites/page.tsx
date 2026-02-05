@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Button, Input, Label, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
-import { Mail, Plus, X, Trash2, AlertCircle, CheckCircle2, Clock, UserX } from 'lucide-react'
+import { Mail, Trash2, AlertCircle, CheckCircle2, Clock, UserX } from 'lucide-react'
 import axios from 'axios'
-import { useRouter } from 'next/navigation'
 import { SettingsNav } from '@/components/settings/SettingsNav'
+import { useAuthSession } from '@/contexts/AuthSessionContext'
 
 const inviteSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -38,7 +38,7 @@ interface TenantData {
 }
 
 export default function InvitesPage() {
-  const router = useRouter()
+  const { orgs, activeOrgId } = useAuthSession()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
@@ -47,6 +47,22 @@ export default function InvitesPage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [invites, setInvites] = useState<Invite[]>([])
   const [tenantData, setTenantData] = useState<TenantData | null>(null)
+
+  const tenantId = (() => {
+    if (orgs.length === 0) return null
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+    const orgIdParam = urlParams?.get('org-id') || urlParams?.get('orgId')
+    const orgSlugParam = urlParams?.get('slug')
+    if (orgIdParam) {
+      const org = orgs.find((o) => o.id === orgIdParam)
+      return org?.id ?? orgs[0]?.id ?? null
+    }
+    if (orgSlugParam) {
+      const org = orgs.find((o) => o.slug === orgSlugParam)
+      return org?.id ?? orgs[0]?.id ?? null
+    }
+    return activeOrgId ?? orgs[0]?.id ?? null
+  })()
 
   const {
     register,
@@ -61,65 +77,35 @@ export default function InvitesPage() {
     },
   })
 
-  // Load invites and tenant data
-  useEffect(() => {
-    loadData()
-  }, [])
+  const loadData = useCallback(async () => {
+    if (!tenantId) {
+      setError('No organization found. Please ensure you are part of an organization.')
+      setLoading(false)
+      return
+    }
 
-  const loadData = async () => {
     try {
       setLoading(true)
-      
-      // Get tenant ID from context (use my-orgs endpoint - same pattern as brands)
-      const orgsResponse = await axios.get('/api/v1/tenants/my-orgs', {
-        withCredentials: true,
+      setError(null)
+
+      const activeOrg = orgs.find((o) => o.id === tenantId) || orgs[0]
+      setTenantData({
+        id: activeOrg.id,
+        name: activeOrg.name,
+        slug: activeOrg.slug,
       })
-      
-      let tenantId: string | null = null
-      
-      if (orgsResponse.data?.orgs?.length > 0) {
-        // Get active org from query params, header, or use first org
-        const urlParams = new URLSearchParams(window.location.search)
-        const orgIdParam = urlParams.get('org-id') || urlParams.get('orgId')
-        const orgSlugParam = urlParams.get('slug')
-        
-        let activeOrg = orgsResponse.data.orgs[0]
-        
-        // Priority: query param org-id > query param slug > first org
-        if (orgIdParam) {
-          activeOrg = orgsResponse.data.orgs.find((org: any) => org.id === orgIdParam) || orgsResponse.data.orgs[0]
-        } else if (orgSlugParam) {
-          activeOrg = orgsResponse.data.orgs.find((org: any) => org.slug === orgSlugParam) || orgsResponse.data.orgs[0]
-        }
-        
-        tenantId = activeOrg.id
-        setTenantData({
-          id: activeOrg.id,
-          name: activeOrg.name,
-          slug: activeOrg.slug,
+
+      try {
+        const tenantResponse = await axios.get(`/api/v1/tenants/${tenantId}`, {
+          withCredentials: true,
         })
-      }
-
-      if (!tenantId) {
-        setError('No organization found. Please ensure you are part of an organization.')
-        return
-      }
-
-      // Load tenant data if not already loaded
-      if (!tenantData) {
-        try {
-          const tenantResponse = await axios.get(`/api/v1/tenants/${tenantId}`, {
-            withCredentials: true,
-          })
-          if (tenantResponse.data) {
-            setTenantData(tenantResponse.data)
-          }
-        } catch (err) {
-          console.warn('Failed to load tenant details, using org data')
+        if (tenantResponse.data) {
+          setTenantData(tenantResponse.data)
         }
+      } catch (err) {
+        console.warn('Failed to load tenant details, using org data')
       }
 
-      // Load invites
       const invitesResponse = await axios.get(`/api/v1/tenants/${tenantId}/invites`, {
         withCredentials: true,
       })
@@ -133,7 +119,15 @@ export default function InvitesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [tenantId, orgs])
+
+  useEffect(() => {
+    if (orgs.length === 0) {
+      setLoading(false)
+      return
+    }
+    loadData()
+  }, [loadData, orgs.length])
 
   const onSubmit = async (formData: InviteFormData) => {
     if (!tenantData) {
@@ -146,7 +140,7 @@ export default function InvitesPage() {
       setError(null)
       setSuccess(null)
 
-      const response = await axios.post(
+      await axios.post(
         `/api/v1/tenants/${tenantData.id}/invites`,
         {
           email: formData.email,

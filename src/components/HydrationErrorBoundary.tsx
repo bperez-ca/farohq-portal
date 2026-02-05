@@ -29,7 +29,7 @@ export class HydrationErrorBoundary extends Component<
     return { hasError: false }
   }
 
-  componentDidCatch(error: Error, errorInfo: any) {
+  componentDidCatch(error: Error, _errorInfo: unknown) {
     // Log hydration errors for debugging
     if (error.message.includes('Hydration failed') || error.message.includes('hydration')) {
       console.warn('Hydration error caught by boundary:', error.message)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { serverApiRequest, getClerkToken } from '@/lib/server-api-client';
+import { getClerkToken } from '@/lib/server-api-client';
 import { safeLogError } from '@/lib/log-sanitizer';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';

@@ -49,7 +49,7 @@ export default function AgencyLeadsPage() {
   const router = useRouter()
   const { theme } = useBrandTheme()
   const brandColor = theme?.primary_color || '#2563eb'
-  const [prospects, setProspects] = useState<Prospect[]>(mockProspects)
+  const [prospects] = useState<Prospect[]>(mockProspects)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const toggle = (id: string) => {

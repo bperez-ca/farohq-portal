@@ -33,8 +33,8 @@ export default function AcceptInvitePage() {
   const router = useRouter()
   const params = useParams()
   const token = params?.token as string
-  const { user, isLoaded: userLoaded } = useUser()
-  const { isLoaded: authLoaded } = useAuth()
+  const { user } = useUser()
+  useAuth()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +60,8 @@ export default function AcceptInvitePage() {
       const b = parseInt(hex.substr(4, 2), 16) / 255
       const max = Math.max(r, g, b)
       const min = Math.min(r, g, b)
-      let h = 0, s = 0, l = (max + min) / 2
+      let h = 0, s = 0
+      const l = (max + min) / 2
       
       if (max !== min) {
         const d = max - min

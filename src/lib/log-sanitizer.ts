@@ -30,7 +30,7 @@ export function sanitizeString(str: string): string {
     sanitized = sanitized.replace(pattern, (match) => {
       // For patterns with capture groups, replace the captured part
       if (match.includes(':')) {
-        const [key, ...valueParts] = match.split(':');
+        const [key] = match.split(':');
         return `${key}: ${REDACTION_PLACEHOLDER}`;
       }
       return REDACTION_PLACEHOLDER;

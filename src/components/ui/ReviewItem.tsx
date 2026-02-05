@@ -21,7 +21,7 @@ export function ReviewItem({
   timestamp,
   text,
   hasReply = false,
-  platformConnected = true,
+  platformConnected: _platformConnected = true,
   onReply,
 }: ReviewItemProps) {
   return (

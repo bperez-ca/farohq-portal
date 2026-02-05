@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
+      await response.text().catch(() => 'Unknown error');
       // On error, assume available (fail open)
       return NextResponse.json({ available: true, slug }, { status: 200 });
     }

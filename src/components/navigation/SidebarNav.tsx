@@ -15,10 +15,12 @@ import { useEffect, useState } from 'react'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 import { BrandLogoSimple } from '@/components/BrandLogo'
 import { Loader2 } from 'lucide-react'
+import { useAuthSession } from '@/contexts/AuthSessionContext'
 // Using img tag instead of Next Image for external URLs
 
 const agencyNavigationItems = [
   { href: '/agency/dashboard', icon: Building2, label: 'Dashboard' },
+  { href: '/agency/clients', icon: Briefcase, label: 'Clients' },
   { href: '/agency/leads', icon: Users, label: 'Leads' },
   { href: '/agency/diagnostics', icon: FileText, label: 'Diagnostics' },
   { href: '/agency/kpis', icon: BarChart3, label: 'KPIs' },
@@ -52,91 +54,15 @@ export function SidebarNav() {
   // All hooks must be called before any conditional returns
   const { collapsed, toggleCollapsed } = useSidebar()
   const { user, isLoaded: userLoaded } = useUser()
+  const { orgs, activeOrgId, loading: isLoadingOrgInfo } = useAuthSession()
   const { theme, toggleTheme } = useTheme()
   const { theme: brandTheme, loading: isBrandThemeLoading } = useBrandTheme()
   const pathname = usePathname()
-  const [orgInfo, setOrgInfo] = useState<{ name: string; logoUrl?: string; tier?: string } | null>(null)
-  const [isLoadingOrgInfo, setIsLoadingOrgInfo] = useState(false)
 
-  // Fetch organization info for branding (optimized with early return and request deduplication)
-  useEffect(() => {
-    // Don't fetch on auth pages
-    if (pathname.startsWith('/signin') || pathname.startsWith('/signup') || pathname.startsWith('/login')) {
-      return
-    }
-
-    let cancelled = false
-
-    async function fetchOrgInfo() {
-      // Wait for user to be loaded, but don't block rendering
-      if (!userLoaded) {
-        return
-      }
-
-      // If no user, keep default
-      if (!user) {
-        if (!cancelled) {
-          setOrgInfo(null)
-        }
-        return
-      }
-
-      setIsLoadingOrgInfo(true)
-      try {
-        const response = await fetch('/api/v1/tenants/my-orgs', {
-          credentials: 'include',
-          // Add cache headers to speed up subsequent loads
-          cache: 'default',
-        })
-
-        if (cancelled) return
-
-        if (response.ok) {
-          const data = await response.json()
-          const orgs = data.orgs || []
-          if (orgs.length > 0) {
-            const activeOrgId = localStorage.getItem('farohq_active_org_id')
-            const activeOrg = activeOrgId ? orgs.find((org: any) => org.id === activeOrgId) : orgs[0]
-            const selectedOrg = activeOrg || orgs[0]
-            if (!cancelled) {
-              setOrgInfo({
-                name: selectedOrg.name || '',
-                logoUrl: selectedOrg.logo_url || selectedOrg.logoUrl,
-                tier: selectedOrg.tier || undefined,
-              })
-            }
-          } else {
-            // No orgs - hide sidebar only after we confirm
-            if (!cancelled) {
-              setOrgInfo(null)
-            }
-          }
-        } else {
-          // Failed to retrieve tenant ID - hide sidebar
-          // This includes 404 (user not found) and other errors
-          if (!cancelled) {
-            setOrgInfo(null)
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to fetch org info:', error)
-          // Failed to retrieve tenant ID - hide sidebar
-          setOrgInfo(null)
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingOrgInfo(false)
-        }
-      }
-    }
-
-    fetchOrgInfo()
-
-    return () => {
-      cancelled = true
-    }
-  }, [user, userLoaded, pathname])
+  const selectedOrg = activeOrgId ? orgs.find((o) => o.id === activeOrgId) : orgs[0]
+  const orgInfo = orgs.length > 0 && selectedOrg
+    ? { name: selectedOrg.name || '', logoUrl: selectedOrg.logo_url || selectedOrg.logoUrl, tier: selectedOrg.tier }
+    : null
 
   // Conditional returns AFTER all hooks
   // Don't show sidebar on auth pages

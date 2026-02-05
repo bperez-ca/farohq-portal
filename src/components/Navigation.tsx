@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Logo } from '@/components/Logo';
-import { Button } from '@/lib/ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 export interface NavigationItem {

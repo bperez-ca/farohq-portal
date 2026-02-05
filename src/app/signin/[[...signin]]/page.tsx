@@ -11,6 +11,7 @@ export default function SignInPage() {
   return (
     <AuthLayout title="Sign In">
       <SignIn
+        path="/signin"
         appearance={{
           elements: {
             rootBox: 'mx-auto',

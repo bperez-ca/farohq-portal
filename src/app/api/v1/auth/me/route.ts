@@ -3,37 +3,20 @@ import { serverApiRequest, getClerkToken } from '@/lib/server-api-client';
 
 /**
  * GET /api/v1/auth/me
- * Get current user information from backend
+ * Get current user information from backend.
+ * Uses Clerk session (cookies) - client sends credentials: 'include' only.
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    // Try to get token from Authorization header first, fallback to Clerk session
-    const authHeader = request.headers.get('authorization');
-    let token: string | null = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-      console.log('Using token from Authorization header');
-    } else {
-      // Fallback to getting token from Clerk session
-      try {
-        token = await getClerkToken();
-        console.log('Got token from Clerk session:', token ? 'token exists' : 'no token');
-      } catch (err) {
-        console.error('Failed to get Clerk token:', err);
-        token = null;
-      }
-    }
+    const token = await getClerkToken();
 
     if (!token) {
-      console.error('No token available for auth/me request');
       return NextResponse.json(
         { error: 'No authentication token available' },
         { status: 401 }
       );
     }
 
-    console.log('Making request to backend /api/v1/auth/me with token');
     const response = await serverApiRequest('/api/v1/auth/me', {
       method: 'GET',
       token: token,
@@ -62,7 +45,6 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('Successfully fetched user info');
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
     console.error('Auth me API error:', error);

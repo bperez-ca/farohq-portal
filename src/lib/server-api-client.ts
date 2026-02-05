@@ -8,6 +8,7 @@ import { headers } from 'next/headers';
 import { safeLogError, safeLogWarn } from './log-sanitizer';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
+const DEBUG_AUTH = process.env.DEBUG_AUTH === 'true';
 
 /**
  * Get the Clerk session token from the request
@@ -15,56 +16,18 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '
  */
 export async function getClerkToken(): Promise<string | null> {
   try {
-    console.log('[Auth] Attempting to retrieve Clerk Bearer token...');
     const { getToken } = await auth();
     const token = await getToken();
-    
-    if (token) {
-      // Log token info (safe - only show first/last chars for debugging)
-      const tokenPreview = token.length > 20 
-        ? `${token.substring(0, 10)}...${token.substring(token.length - 10)}`
-        : '***';
-      console.log(`[Auth] ✓ Bearer token retrieved successfully (length: ${token.length}, preview: ${tokenPreview})`);
-      
-      // Decode JWT to show claims structure (header.payload.signature)
-      // JWT uses base64url encoding, which is mostly compatible with base64
-      try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          // Base64url decode (add padding if needed)
-          const base64UrlDecode = (str: string) => {
-            let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-            const pad = base64.length % 4;
-            if (pad) {
-              base64 += new Array(5 - pad).join('=');
-            }
-            return Buffer.from(base64, 'base64').toString();
-          };
-          
-          const header = JSON.parse(base64UrlDecode(parts[0]));
-          const payload = JSON.parse(base64UrlDecode(parts[1]));
-          console.log('[Auth] Token structure:', {
-            header: { alg: header.alg, typ: header.typ },
-            payload: {
-              sub: payload.sub,
-              email: payload.email,
-              org_id: payload.o?.id || payload.org_id,
-              exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : null,
-              iat: payload.iat ? new Date(payload.iat * 1000).toISOString() : null,
-            },
-          });
-        }
-      } catch (decodeError) {
-        // Ignore decode errors, just log that we got the token
-        console.log('[Auth] Token structure decode skipped (token format may vary)');
+    if (DEBUG_AUTH) {
+      if (token) {
+        const tokenPreview = token.length > 20 ? `${token.substring(0, 10)}...${token.substring(token.length - 10)}` : '***';
+        console.log(`[Auth] Bearer token retrieved (length: ${token.length}, preview: ${tokenPreview})`);
+      } else {
+        console.warn('[Auth] Bearer token retrieval returned null');
       }
-    } else {
-      console.warn('[Auth] ✗ Bearer token retrieval returned null - user may not be authenticated');
     }
-    
     return token;
   } catch (error) {
-    console.error('[Auth] ✗ Failed to get Clerk Bearer token:', error);
     safeLogError('Failed to get Clerk token', error);
     return null;
   }
@@ -88,7 +51,7 @@ function createHeaders(token?: string | null): HeadersInit {
 /**
  * Make an authenticated API request to the backend from a server component/route handler
  */
-export async function serverApiRequest<T = unknown>(
+export async function serverApiRequest(
   endpoint: string,
   options: RequestInit & { token?: string | null } = {}
 ): Promise<Response> {
@@ -136,10 +99,8 @@ export async function proxyApiRequest(
   const { token: providedToken } = options;
   const token = providedToken ?? await getClerkToken();
   
-  if (!token) {
-    console.warn(`[Proxy] ✗ No Bearer token available for request to ${endpoint}`);
-  } else {
-    console.log(`[Proxy] → Proxying ${request.method} ${endpoint} with Bearer token`);
+  if (DEBUG_AUTH && !token) {
+    console.warn(`[Proxy] No Bearer token available for request to ${endpoint}`);
   }
 
   const url = endpoint.startsWith('http') 
@@ -182,24 +143,12 @@ export async function proxyApiRequest(
     ...forwardedHeaders,
   };
   
-  // Log headers being sent (sanitize Authorization header for security)
-  const logHeaders = { ...headers };
-  if (logHeaders['Authorization']) {
-    const authHeader = logHeaders['Authorization'] as string;
-    logHeaders['Authorization'] = authHeader.length > 20 
-      ? `Bearer ${authHeader.substring(7, 17)}...${authHeader.substring(authHeader.length - 10)}`
-      : 'Bearer ***';
-  }
-  console.log(`[Proxy] Request headers for ${request.method} ${endpoint}:`, logHeaders);
-
   const response = await fetch(fullUrl, {
     method: request.method,
     headers,
     body,
   });
 
-  console.log(`[Proxy] ← Response from ${endpoint}: ${response.status} ${response.statusText}`);
-  
   return response;
 }
 

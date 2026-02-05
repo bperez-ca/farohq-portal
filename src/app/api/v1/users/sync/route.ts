@@ -8,35 +8,16 @@ import { serverApiRequest, getClerkToken } from '@/lib/server-api-client';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Try to get token from Authorization header first, fallback to Clerk session
-    const authHeader = request.headers.get('authorization');
-    let token: string | null = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-      console.log('Using token from Authorization header');
-    } else {
-      // Fallback to getting token from Clerk session
-      try {
-        token = await getClerkToken();
-        console.log('Got token from Clerk session:', token ? 'token exists' : 'no token');
-      } catch (err) {
-        console.error('Failed to get Clerk token:', err);
-        token = null;
-      }
-    }
+    const token = await getClerkToken();
 
     if (!token) {
-      console.error('No token available for users/sync request');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Get user data from request body
     const body = await request.json();
-    console.log('Received user data to sync:', JSON.stringify(body, null, 2));
     
     // Validate required fields
     if (!body.clerk_user_id) {

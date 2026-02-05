@@ -76,6 +76,7 @@ export default function SignUpPage() {
   return (
     <AuthLayout title="Sign Up">
       <SignUp
+        path="/signup"
         appearance={{
           elements: {
             rootBox: 'mx-auto',

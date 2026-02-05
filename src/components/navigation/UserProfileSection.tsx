@@ -1,6 +1,6 @@
 'use client'
 
-import { useUser, useClerk, useAuth } from '@clerk/nextjs'
+import { useUser, useClerk } from '@clerk/nextjs'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { Settings, LogOut, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useAuthSession } from '@/contexts/AuthSessionContext'
 
 interface UserProfileSectionProps {
   collapsed?: boolean
@@ -23,45 +23,10 @@ interface UserProfileSectionProps {
 }
 
 export function UserProfileSection({ collapsed = false, tier }: UserProfileSectionProps) {
-  const { user, isLoaded: userLoaded } = useUser()
+  const { user } = useUser()
   const { signOut } = useClerk()
-  const { isLoaded: authLoaded, getToken } = useAuth()
   const router = useRouter()
-  const [userRole, setUserRole] = useState<string | null>(null)
-
-  // Fetch user role from backend
-  useEffect(() => {
-    async function fetchUserRole() {
-      if (!authLoaded || !userLoaded || !user) {
-        return
-      }
-
-      try {
-        const token = await getToken()
-        if (!token) {
-          return
-        }
-
-        const response = await fetch('/api/v1/auth/me', {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          credentials: 'include',
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setUserRole(data.org_role || null)
-        }
-      } catch (error) {
-        // Silently fail - role is optional
-        console.error('Failed to fetch user role:', error)
-      }
-    }
-
-    fetchUserRole()
-  }, [authLoaded, userLoaded, user, getToken])
+  const { orgRole: userRole } = useAuthSession()
 
   if (!user) return null
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
 import { Button } from '@/lib/ui'
 import { AlertCircle, CheckCircle2, Loader2, ExternalLink } from 'lucide-react'
@@ -33,42 +33,7 @@ export function DomainVerification({ brandId, domain, tier }: DomainVerification
   const [error, setError] = useState<string | null>(null)
   const [instructions, setInstructions] = useState<string | null>(null)
 
-  // Tier validation: Only render for Scale tier
-  if (tier !== 'scale') {
-    return (
-      <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20">
-        <CardHeader>
-          <CardTitle className="text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            Upgrade Required
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-4">
-            Custom domain support is only available for Scale tier. Upgrade to enable this feature.
-          </p>
-          <Button variant="outline" onClick={() => window.location.href = '/settings/billing'}>
-            Upgrade to Scale Tier
-          </Button>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Load domain status on mount and periodically
-  useEffect(() => {
-    loadDomainStatus()
-    // Poll every 30 seconds when status is pending
-    const interval = setInterval(() => {
-      if (status?.ssl_status === 'pending') {
-        loadDomainStatus()
-      }
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [brandId, domain, status?.ssl_status])
-
-  const loadDomainStatus = async () => {
+  const loadDomainStatus = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -90,6 +55,40 @@ export function DomainVerification({ brandId, domain, tier }: DomainVerification
     } finally {
       setLoading(false)
     }
+  }, [brandId])
+
+  // Load domain status on mount and periodically (only when tier is scale)
+  useEffect(() => {
+    if (tier !== 'scale') return
+    loadDomainStatus()
+    const interval = setInterval(() => {
+      if (status?.ssl_status === 'pending') {
+        loadDomainStatus()
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [brandId, domain, status?.ssl_status, tier, loadDomainStatus])
+
+  // Tier validation: Only render for Scale tier
+  if (tier !== 'scale') {
+    return (
+      <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20">
+        <CardHeader>
+          <CardTitle className="text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            Upgrade Required
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-4">
+            Custom domain support is only available for Scale tier. Upgrade to enable this feature.
+          </p>
+          <Button variant="outline" onClick={() => window.location.href = '/settings/billing'}>
+            Upgrade to Scale Tier
+          </Button>
+        </CardContent>
+      </Card>
+    )
   }
 
   const loadInstructions = async () => {

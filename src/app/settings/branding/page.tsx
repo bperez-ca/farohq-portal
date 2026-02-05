@@ -88,7 +88,8 @@ export default function BrandingSettingsPage() {
   const primaryColor = watch('primaryColor')
   const secondaryColor = watch('secondaryColor')
   const website = watch('website')
-  const hidePoweredBy = watch('hidePoweredBy')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- form subscription for hidePoweredBy
+  const _hidePoweredBy = watch('hidePoweredBy')
   const tenantSlug = watch('tenantSlug')
 
   // Validate slug when it changes

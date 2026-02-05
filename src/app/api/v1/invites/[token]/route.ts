@@ -8,10 +8,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ token: string }> | { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
   try {
-    const { token } = await Promise.resolve(params);
+    const { token } = await params;
     
     if (!token) {
       return NextResponse.json(

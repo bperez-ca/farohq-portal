@@ -2,7 +2,6 @@
 
 import { Button } from '@/lib/ui'
 import { Card } from '@/lib/ui'
-import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 import { LucideIcon } from 'lucide-react'
 import { KPITooltip } from '@/components/shared/KPITooltip'
 
@@ -36,9 +35,6 @@ export function StatCard({
   tooltip,
   optionalCTA,
 }: StatCardProps) {
-  const { theme } = useBrandTheme()
-  const brandColor = theme?.primary_color || '#2563eb'
-
   const displayTitle = title || label
   const displayValue = bigNumber !== undefined ? bigNumber : value
   const displaySubtext = subtext || subtitle

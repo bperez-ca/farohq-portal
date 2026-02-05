@@ -6,6 +6,7 @@ import { useUser, useAuth } from '@clerk/nextjs'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
 import { Loader2, AlertCircle } from 'lucide-react'
 import axios from 'axios'
+import { useAuthSessionOptional } from '@/contexts/AuthSessionContext'
 
 interface Invite {
   id: string
@@ -36,9 +37,10 @@ export default function ProcessingInvitePage() {
   const { user, isLoaded: userLoaded } = useUser()
   const { isLoaded: authLoaded } = useAuth()
 
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   const [message, setMessage] = useState<string>('Processing your invitation...')
   const [error, setError] = useState<string | null>(null)
+  const session = useAuthSessionOptional()
 
   useEffect(() => {
     if (!token) {
@@ -79,7 +81,7 @@ export default function ProcessingInvitePage() {
       // This ensures the user exists in our database before proceeding
       setMessage('Syncing your account...')
       try {
-        const syncResponse = await axios.post(
+        await axios.post(
           '/api/v1/users/sync',
           {
             clerk_user_id: user.id,
@@ -100,29 +102,29 @@ export default function ProcessingInvitePage() {
         // Continue to check for invitations
       }
 
-      // Step 2: Check if user has existing tenants
+      // Step 2: Check if user has existing tenants (from session if available, else fetch)
       setMessage('Checking your organizations...')
-      try {
-        const orgsResponse = await axios.get('/api/v1/tenants/my-orgs', {
-          withCredentials: true,
-        })
+      let orgCount = session?.orgCount ?? 0
+      let firstOrgId = session?.orgs?.[0]?.id
 
-        const orgsData = orgsResponse.data
-        const orgCount = orgsData.count || (orgsData.orgs || []).length
-
-        // If user has tenant, redirect to dashboard (skip connect stepper)
-        if (orgCount > 0) {
-          const firstOrg = orgsData.orgs?.[0]
-          if (firstOrg?.id) {
-            localStorage.setItem('farohq_active_org_id', firstOrg.id)
-          }
-          setMessage('You already have an organization. Redirecting to dashboard...')
-          setTimeout(() => router.push('/dashboard'), 1000)
-          return
+      if (orgCount === 0 || !firstOrgId) {
+        try {
+          const orgsResponse = await axios.get('/api/v1/tenants/my-orgs', {
+            withCredentials: true,
+          })
+          const orgsData = orgsResponse.data
+          orgCount = orgsData.count || (orgsData.orgs || []).length
+          firstOrgId = orgsData.orgs?.[0]?.id
+        } catch (orgsError: any) {
+          console.warn('Check orgs warning:', orgsError)
         }
-      } catch (orgsError: any) {
-        // If error (shouldn't happen after fix, but handle gracefully), continue
-        console.warn('Check orgs warning:', orgsError)
+      }
+
+      if (orgCount > 0 && firstOrgId) {
+        localStorage.setItem('farohq_active_org_id', firstOrgId)
+        setMessage('You already have an organization. Redirecting to dashboard...')
+        setTimeout(() => router.push('/dashboard'), 1000)
+        return
       }
 
       // Step 3: Find invitation by email (now that user is synced)

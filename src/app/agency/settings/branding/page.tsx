@@ -12,6 +12,7 @@ import { DomainVerification } from '@/components/branding/DomainVerification'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SettingsNav } from '@/components/settings/SettingsNav'
 import { suggestSecondaryColor, getContrastRating, hexToHsl, hslToHex, getTextColorForBackground, type ColorSuggestion } from '@/lib/color-utils'
+import { useAuthSession } from '@/contexts/AuthSessionContext'
 
 const brandingSchema = z.object({
   website: z.string().url('Invalid URL format').optional().or(z.literal('')),
@@ -53,6 +54,7 @@ interface TenantData {
 export default function BrandingSettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { orgs, activeOrgId } = useAuthSession()
   const isDebugMode = searchParams.get('debug') === 'useTheForceLuke'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -97,9 +99,7 @@ export default function BrandingSettingsPage() {
   const primaryColor = watch('primaryColor')
   const secondaryColor = watch('secondaryColor')
   const website = watch('website')
-  const hidePoweredBy = watch('hidePoweredBy')
   const tenantSlug = watch('tenantSlug')
-  const tenantName = watch('tenantName')
 
   // Generate color suggestions when primary color changes
   useEffect(() => {
@@ -253,10 +253,11 @@ export default function BrandingSettingsPage() {
     }
   }, [tenantSlug, tenantData])
 
-  // Load brand data
+  // Load brand data (re-run when orgs load for no-brand fallback)
   useEffect(() => {
     loadBrandData()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgs.length])
 
   const loadBrandData = async () => {
     try {
@@ -307,15 +308,9 @@ export default function BrandingSettingsPage() {
           }
         }
       } else {
-        // No brand exists yet - try to get tenant info to at least show tenant fields
-        try {
-          // Get user's organizations to get tenant ID
-          const orgsResponse = await axios.get('/api/v1/tenants/my-orgs', {
-            withCredentials: true,
-          })
-          
-          if (orgsResponse.data && orgsResponse.data.orgs && orgsResponse.data.orgs.length > 0) {
-            const activeOrg = orgsResponse.data.orgs[0]
+        // No brand exists yet - use orgs from session context
+        if (orgs.length > 0) {
+          const activeOrg = orgs.find((o) => o.id === activeOrgId) || orgs[0]
             
             // Use org data directly (my-orgs already returns name, slug, etc.)
             // Try to get more detailed tenant info, but fallback to org data if it fails
@@ -364,12 +359,8 @@ export default function BrandingSettingsPage() {
               can_configure_domain: false,
               ssl_status: null,
             })
-          } else {
-            setError('No organizations found. Please ensure you are part of an organization.')
-          }
-        } catch (orgError) {
-          console.error('Failed to load org/tenant data:', orgError)
-          setError('No brand or organization found. Please ensure you are part of an organization.')
+        } else {
+          setError('No organizations found. Please ensure you are part of an organization.')
         }
       }
     } catch (error: any) {
@@ -1305,7 +1296,7 @@ export default function BrandingSettingsPage() {
                 <p className="text-lg font-semibold">{brandData.subdomain}</p>
                 {brandData.domain_type === 'subdomain' && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    You're currently using a subdomain. Upgrade to Scale tier to use your custom domain.
+                    You&apos;re currently using a subdomain. Upgrade to Scale tier to use your custom domain.
                   </p>
                 )}
               </div>
@@ -1322,7 +1313,7 @@ export default function BrandingSettingsPage() {
                   defaultValue={brandData.domain || ''}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Configure your custom domain. We'll send setup instructions after you save.
+                  Configure your custom domain. We&apos;ll send setup instructions after you save.
                 </p>
                 {brandData.domain && (
                   <div className="mt-4">
@@ -1348,7 +1339,7 @@ export default function BrandingSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Branding Badge</CardTitle>
-            <CardDescription>Control the "Powered by Faro" badge visibility</CardDescription>
+            <CardDescription>Control the &quot;Powered by Faro&quot; badge visibility</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
@@ -1360,7 +1351,7 @@ export default function BrandingSettingsPage() {
                 className="w-4 h-4 rounded border-gray-300"
               />
               <Label htmlFor="hide-powered-by" className="cursor-pointer">
-                Hide "Powered by Faro" badge
+                Hide &quot;Powered by Faro&quot; badge
               </Label>
             </div>
             {!brandData.can_hide_powered_by && (

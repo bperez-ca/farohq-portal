@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { OrgSelector } from '@/components/OrgSelector'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/lib/ui'
-import { Button } from '@/lib/ui'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button } from '@/lib/ui'
 
 interface BackendUserInfo {
   user_id: string
@@ -302,6 +301,11 @@ export default function ProfilePage() {
                   </div>
                 )}
               </dl>
+              <div className="mt-6 pt-6 border-t">
+                <Button variant="outline" onClick={handleLogout}>
+                  Sign out
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

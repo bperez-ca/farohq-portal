@@ -19,12 +19,12 @@ export default function AgencyDashboardPage() {
   const brandColor = theme?.primary_color || '#2563eb'
   const [filters, setFilters] = useState<FilterState>({ dateRange: '30d' })
 
-  const handleViewAsClient = (clientId: string) => {
+  const handleViewAsClient = (_clientId: string) => {
     // TODO: Navigate to specific client dashboard when implemented
     router.push('/business/dashboard')
   }
 
-  const handleFixNow = (clientId: string, issue: string) => {
+  const handleFixNow = (_clientId: string, _issue: string) => {
     // TODO: Navigate to specific issue resolution page
     // For now, navigate to business dashboard
     router.push('/business/dashboard')
@@ -136,7 +136,7 @@ export default function AgencyDashboardPage() {
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-base text-rose-900 dark:text-rose-100 mb-2 tracking-tight">Churn Watch</h3>
                 <p className="text-sm text-rose-800 dark:text-rose-200 mb-4 leading-relaxed">
-                  3 clients dropped below 10 replies in 24h. Reach out before they blame "marketing not working".
+                  3 clients dropped below 10 replies in 24h. Reach out before they blame &quot;marketing not working&quot;.
                 </p>
                 <Button
                   onClick={handlePlaybookClick}

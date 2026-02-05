@@ -56,7 +56,7 @@ export function AuthLayout({ children, title }: AuthLayoutProps) {
             logoUrl="/logo.svg"
             alt="FaroHQ"
             className="h-12 w-auto mb-4"
-            fallback="/logo.svg"
+            fallbackText="FaroHQ"
             showText={false}
           />
         )}

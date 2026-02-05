@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/lib/ui'
 import { Card } from '@/lib/ui'
-import { Calendar, Filter } from 'lucide-react'
+import { Filter } from 'lucide-react'
 
 interface DashboardFiltersProps {
   onFilterChange?: (filters: FilterState) => void

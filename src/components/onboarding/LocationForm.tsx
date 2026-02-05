@@ -55,7 +55,6 @@ export function LocationForm({ data, onComplete }: LocationFormProps) {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<LocationFormData>({
     resolver: zodResolver(locationSchema),

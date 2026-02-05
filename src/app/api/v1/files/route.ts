@@ -5,7 +5,7 @@ import { getFilesApi } from '@/lib/sdk-client';
  * GET /api/v1/files
  * List files using the typed SDK
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const filesApi = await getFilesApi();
     // apiV1FilesGet doesn't require parameters

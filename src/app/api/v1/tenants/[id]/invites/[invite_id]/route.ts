@@ -11,12 +11,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string; invite_id: string }> | { id: string; invite_id: string } }
+  { params }: { params: Promise<{ id: string; invite_id: string }> }
 ) {
   try {
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const tenantId = resolvedParams.id;
-    const inviteId = resolvedParams.invite_id;
+    const { id: tenantId, invite_id: inviteId } = await params;
 
     const token = await getClerkToken();
     if (!token) {

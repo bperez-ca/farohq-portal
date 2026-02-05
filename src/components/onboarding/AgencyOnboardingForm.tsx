@@ -160,7 +160,6 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
   // Update slug when agency name changes (if slug matches previous generated slug)
   useEffect(() => {
     if (agencyName) {
-      const generatedSlug = generateSlug(agencyName)
       const currentSlug = slug
       // Only auto-update if current slug matches what would be generated from previous name
       // This is a simple heuristic - in practice, user might have edited slug, so we're conservative
@@ -384,13 +383,13 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
         // Continue anyway - brand can be created later
       }
 
-      // Pass data to parent component
+      // Pass data to parent component (subdomain: full URL when set)
       const fullSubdomain = formData.subdomain ? `${formData.subdomain}.app.farohq.com` : undefined
       onComplete({
         ...formData,
         logoUrl: logoUrl || logoPreview || undefined,
         tenantId: tenantId,
-        subdomain: fullSubdomain,
+        ...(fullSubdomain != null && { subdomain: fullSubdomain }),
       })
     } catch (error) {
       safeLogError('Failed to create agency', error)

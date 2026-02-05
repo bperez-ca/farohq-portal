@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyApiRequest, serverApiRequest, getClerkToken } from '@/lib/server-api-client';
-import { safeLogError, safeLogWarn } from '@/lib/log-sanitizer';
+import { safeLogWarn } from '@/lib/log-sanitizer';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080';
 
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
   // Normalize host - remove port if it doesn't match current port
   let normalizedHost = host || '';
   if (normalizedHost && normalizedHost.includes(':')) {
-    const [hostname, port] = normalizedHost.split(':');
+    const [hostname] = normalizedHost.split(':');
     // If it's localhost with a port, use just localhost (or keep original if not localhost)
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       normalizedHost = hostname; // Remove port for localhost

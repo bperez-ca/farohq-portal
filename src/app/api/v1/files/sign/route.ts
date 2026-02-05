@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyApiRequest, serverApiRequest, getClerkToken } from '@/lib/server-api-client';
+import { serverApiRequest, getClerkToken } from '@/lib/server-api-client';
 
 /**
  * POST /api/v1/files/sign

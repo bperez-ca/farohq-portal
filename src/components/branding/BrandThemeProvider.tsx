@@ -608,7 +608,7 @@ export function BrandThemeProvider({ children }: BrandThemeProviderProps) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, theme]) // Re-fetch when pathname changes (different subdomain/domain), re-apply when theme changes
+  }, []) // Run once at load time; brandThemeUpdated event handles manual refetches
 
   return (
     <BrandThemeContext.Provider value={{ theme, loading }}>

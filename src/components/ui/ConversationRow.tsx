@@ -1,4 +1,4 @@
-import { Instagram, MessageSquare, Mail, Facebook, Phone } from "lucide-react";
+import { Instagram, MessageSquare, Mail, Facebook } from "lucide-react";
 
 interface ConversationRowProps {
   channel: string;

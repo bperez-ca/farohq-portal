@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { 
   Button, 
   Card, 
@@ -14,7 +13,6 @@ import {
   AlertTitle,
   Separator,
   useTheme,
-  BrandLogo,
   StatCard,
   StatusChip,
   ProviderLogo,
@@ -33,11 +31,7 @@ import {
   RefreshCw,
   TrendingUp,
   Users,
-  Star,
-  MessageSquare,
-  Settings,
-  Home,
-  LayoutDashboard
+  Star
 } from 'lucide-react';
 
 export default function TestM0Page() {

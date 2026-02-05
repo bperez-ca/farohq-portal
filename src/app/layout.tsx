@@ -6,6 +6,7 @@ import { Favicon } from '../components/Favicon'
 import { PoweredByBadge } from '../components/PoweredByBadge'
 import { ClerkProvider } from '@clerk/nextjs'
 import { BrandThemeProvider } from '../components/branding/BrandThemeProvider'
+import { AuthSessionProvider } from '../contexts/AuthSessionContext'
 import { SidebarLayout } from '../components/layouts/SidebarLayout'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -34,11 +35,13 @@ export default function RootLayout({
             enableBrandTheme={true}
           >
             <BrandThemeProvider>
-              <Favicon />
-              <SidebarLayout>
-                {children}
-              </SidebarLayout>
-              <PoweredByBadge />
+              <AuthSessionProvider>
+                <Favicon />
+                <SidebarLayout>
+                  {children}
+                </SidebarLayout>
+                <PoweredByBadge />
+              </AuthSessionProvider>
             </BrandThemeProvider>
           </ThemeProvider>
         </body>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@/components/Button';
+import { Button } from '@/lib/ui';
 
 export interface HeroProps {
   title: string;
@@ -52,8 +52,8 @@ export const Hero: React.FC<HeroProps> = ({
             <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-16">
               {primaryAction && (
                 <Button
-                  variant="primary"
-                  size="xl"
+                  variant="default"
+                  size="lg"
                   onClick={primaryAction.onClick}
                 >
                   {primaryAction.label}
@@ -62,7 +62,7 @@ export const Hero: React.FC<HeroProps> = ({
               {secondaryAction && (
                 <Button
                   variant="outline"
-                  size="xl"
+                  size="lg"
                   onClick={secondaryAction.onClick}
                 >
                   {secondaryAction.label}

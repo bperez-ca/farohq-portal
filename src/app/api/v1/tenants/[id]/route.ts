@@ -11,12 +11,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Handle both Next.js 15 (Promise) and Next.js 14 (direct) params
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const tenantId = resolvedParams.id;
+    const { id: tenantId } = await params;
 
     const token = await getClerkToken();
     if (!token) {
@@ -66,12 +64,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Handle both Next.js 15 (Promise) and Next.js 14 (direct) params
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const tenantId = resolvedParams.id;
+    const { id: tenantId } = await params;
 
     const token = await getClerkToken();
     if (!token) {
