@@ -5,10 +5,12 @@ import { useRouter, useParams } from 'next/navigation'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card, Button, Badge, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/lib/ui'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
-import { Loader2, MapPin, ChevronLeft, Zap, Archive, PauseCircle } from 'lucide-react'
+import { Loader2, MapPin, ChevronLeft, Zap, Archive, PauseCircle, Star, ChevronDown, ChevronUp, MessageCircle, FileText, Send, Plus, ExternalLink } from 'lucide-react'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
 import { ActivateClientModal } from '@/components/agency/ActivateClientModal'
+import { LocationPhotoLightbox } from '@/components/agency/LocationPhotoLightbox'
+import { placePhotoUrl } from '@/lib/place-photo'
 
 interface Client {
   id: string
@@ -32,20 +34,60 @@ interface Location {
   address?: Record<string, unknown>
   phone?: string
   website?: string
-  business_hours?: Record<string, unknown>
+  business_hours?: Record<string, unknown> & { weekdayDescriptions?: string[]; openNow?: boolean }
   categories?: string[]
   is_active: boolean
   gbp_place_id?: string
   location_label?: string
   photos?: string[]
+  rating?: number
+  review_count?: number
+  primary_type?: string
+  google_maps_uri?: string
+  price_level?: string
+  business_status?: string
+  editorial_summary?: string
+  types?: string[]
+  delivery?: boolean
+  takeout?: boolean
+  dine_in?: boolean
+  curbside_pickup?: boolean
+  reservable?: boolean
+  serves_breakfast?: boolean
+  serves_lunch?: boolean
+  serves_dinner?: boolean
+  serves_beer?: boolean
+  serves_wine?: boolean
+  serves_cocktails?: boolean
+  serves_vegetarian_food?: boolean
+  outdoor_seating?: boolean
+  live_music?: boolean
+  good_for_children?: boolean
+  good_for_groups?: boolean
+  payment_options?: Record<string, unknown>
+  parking_options?: Record<string, unknown>
+  accessibility_options?: Record<string, unknown>
   created_at: string
   updated_at: string
 }
 
-/** Build place-photo URL for location images (proxy returns 302 to Google image). */
-function placePhotoUrl(photoName: string, maxPx = 400): string {
-  const params = new URLSearchParams({ name: photoName, max_px: String(maxPx) })
-  return `/api/v1/smb/place-photo?${params.toString()}`
+function priceLevelLabel(level: string): string {
+  const map: Record<string, string> = {
+    PRICE_LEVEL_FREE: 'Free',
+    PRICE_LEVEL_INEXPENSIVE: '$',
+    PRICE_LEVEL_MODERATE: '$$',
+    PRICE_LEVEL_EXPENSIVE: '$$$',
+    PRICE_LEVEL_VERY_EXPENSIVE: '$$$$',
+  }
+  return map[level] || level.replace('PRICE_LEVEL_', '') || ''
+}
+
+function getLocationCoords(loc: Location): { lat: number; lng: number } | null {
+  const addr = loc.address as { latitude?: number; longitude?: number } | undefined
+  if (addr && typeof addr.latitude === 'number' && typeof addr.longitude === 'number') {
+    return { lat: addr.latitude, lng: addr.longitude }
+  }
+  return null
 }
 
 export default function ClientDetailPage() {
@@ -62,8 +104,24 @@ export default function ClientDetailPage() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxPhotos, setLightboxPhotos] = useState<string[]>([])
+  const [lightboxInitialIndex, setLightboxInitialIndex] = useState(0)
+  const [expandedHoursLocId, setExpandedHoursLocId] = useState<string | null>(null)
   const { activeOrgId, orgs } = useAuthSession()
+
+  const headerRating = locations.length > 0 && (locations[0].rating != null && locations[0].rating > 0)
+    ? { rating: locations[0].rating, reviewCount: locations[0].review_count ?? 0 }
+    : null
   const orgId = activeOrgId || orgs?.[0]?.id
+
+  const mapEmbedKey =
+    typeof process !== 'undefined'
+      ? (process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAP_KEY || '')
+      : ''
+  const firstLocationWithPlaceId = locations.find((loc) => loc.gbp_place_id)
+  const firstLocationWithCoords = locations.map((loc) => ({ loc, coords: getLocationCoords(loc) })).find((x) => x.coords)
+  const canShowMap = mapEmbedKey && (firstLocationWithPlaceId || firstLocationWithCoords)
 
   useEffect(() => {
     if (!clientId) return
@@ -199,7 +257,7 @@ export default function ClientDetailPage() {
           { label: client.name },
         ]}
         title={client.name}
-        subtitle={client.slug}
+        subtitle={[client.slug, headerRating && `${headerRating.rating.toFixed(1)} ★${headerRating.reviewCount > 0 ? ` (${headerRating.reviewCount} reviews)` : ''}`].filter(Boolean).join(' · ')}
         actions={
           <div className="flex items-center gap-2">
             {(client.lifecycle === 'lead' || !client.lifecycle) && orgId && (
@@ -220,6 +278,17 @@ export default function ClientDetailPage() {
               <ChevronLeft className="w-4 h-4 mr-2" />
               Back to Clients
             </Button>
+            {client.status === 'active' && (
+              <Button
+                variant="outline"
+                className="h-10 px-4 font-medium text-sm gap-2"
+                onClick={() => router.push(`/business/${client.slug}/dashboard`)}
+                title="View as Business (client-facing dashboard)"
+              >
+                <ExternalLink className="w-4 h-4" />
+                View as Business
+              </Button>
+            )}
           </div>
         }
       />
@@ -279,6 +348,55 @@ export default function ClientDetailPage() {
         </Card>
 
         <Card className="p-6">
+          <h3 className="font-medium text-base mb-4">Health Score</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-lg border border-black/10 dark:border-white/10 p-4 text-center">
+              <div className="text-2xl font-semibold text-muted-foreground">—</div>
+              <div className="text-xs text-muted-foreground mt-1">Presence</div>
+              <div className="text-xs text-muted-foreground">NAP, Hours, Photos</div>
+            </div>
+            <div className="rounded-lg border border-black/10 dark:border-white/10 p-4 text-center">
+              <div className="text-2xl font-semibold text-muted-foreground">—</div>
+              <div className="text-xs text-muted-foreground mt-1">Trust</div>
+              <div className="text-xs text-muted-foreground">Rating, Reviews</div>
+            </div>
+            <div className="rounded-lg border border-black/10 dark:border-white/10 p-4 text-center">
+              <div className="text-2xl font-semibold text-muted-foreground">—</div>
+              <div className="text-xs text-muted-foreground mt-1">Speed</div>
+              <div className="text-xs text-muted-foreground">Response time</div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">Scores will appear when metrics are available.</p>
+        </Card>
+
+        <Card className="p-6">
+          <h3 className="font-medium text-base mb-3">Quick Actions</h3>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-2">
+              <Zap className="w-4 h-4" />
+              Connect Google Business Profile
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2">
+              <MessageCircle className="w-4 h-4" />
+              Connect WhatsApp
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Generate Diagnostic Report
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Send className="w-4 h-4" />
+              Send Review Request
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h3 className="font-medium text-base mb-3">Recent activity</h3>
+          <p className="text-sm text-muted-foreground">No recent activity</p>
+        </Card>
+
+        <Card className="p-6">
           <h3 className="font-medium text-base mb-3">Actions</h3>
           <div className="flex flex-wrap gap-2">
             {client.status === 'active' && (
@@ -309,17 +427,66 @@ export default function ClientDetailPage() {
           </p>
         </Card>
 
+        {(locations.length > 0 || canShowMap) && (
+          <Card className="p-6">
+            <h3 className="font-medium text-base mb-3">Map</h3>
+            {canShowMap ? (
+              <div className="rounded-md overflow-hidden border border-black/10 dark:border-white/10 bg-muted/30">
+                {firstLocationWithPlaceId ? (
+                  <iframe
+                    title="Client locations map"
+                    width="100%"
+                    height="280"
+                    style={{ border: 0 }}
+                    src={`https://www.google.com/maps/embed/v1/place?key=${mapEmbedKey}&q=place_id:${firstLocationWithPlaceId.gbp_place_id}`}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                ) : firstLocationWithCoords ? (
+                  <iframe
+                    title="Client locations map"
+                    width="100%"
+                    height="280"
+                    style={{ border: 0 }}
+                    src={`https://www.google.com/maps/embed/v1/view?key=${mapEmbedKey}&center=${firstLocationWithCoords.coords.lat},${firstLocationWithCoords.coords.lng}&zoom=15`}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {locations.length === 0
+                  ? 'Add a location to see it on the map.'
+                  : 'Map unavailable — set NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY or add locations with coordinates.'}
+              </p>
+            )}
+          </Card>
+        )}
+
         <Card className="rounded-xl shadow-sm">
-          <div className="px-6 py-5 border-b border-black/5 dark:border-white/10">
-            <h2 className="text-xl font-medium tracking-tight">Locations</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {locations.length} location{locations.length !== 1 ? 's' : ''}
-            </p>
+          <div className="px-6 py-5 border-b border-black/5 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="text-xl font-medium tracking-tight">Locations</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {locations.length} location{locations.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Plus className="w-4 h-4" />
+              Add Location
+            </Button>
           </div>
           {locations.length === 0 ? (
             <div className="p-12 text-center">
               <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <p className="text-muted-foreground">No locations added yet</p>
+              <Button variant="outline" size="sm" className="mt-4 gap-2">
+                <Plus className="w-4 h-4" />
+                Add Location
+              </Button>
             </div>
           ) : (
             <div className="divide-y divide-black/5 dark:divide-white/10">
@@ -329,19 +496,22 @@ export default function ClientDetailPage() {
                     {loc.photos && loc.photos.length > 0 ? (
                       <div className="flex gap-2 flex-wrap">
                         {loc.photos.slice(0, 5).map((photoName, i) => (
-                          <a
+                          <button
                             key={i}
-                            href={placePhotoUrl(photoName, 800)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded-lg overflow-hidden border border-black/10 dark:border-white/10 w-16 h-16 flex-shrink-0"
+                            type="button"
+                            onClick={() => {
+                              setLightboxPhotos(loc.photos ?? [])
+                              setLightboxInitialIndex(i)
+                              setLightboxOpen(true)
+                            }}
+                            className="block rounded-lg overflow-hidden border border-black/10 dark:border-white/10 w-16 h-16 flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                           >
                             <img
                               src={placePhotoUrl(photoName)}
                               alt=""
                               className="w-full h-full object-cover"
                             />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     ) : (
@@ -357,18 +527,87 @@ export default function ClientDetailPage() {
                       {loc.location_label && (
                         <div className="text-xs text-muted-foreground">{loc.location_label}</div>
                       )}
-                      <div className="flex flex-wrap gap-2 mt-2">
+                      <div className="flex flex-wrap gap-2 mt-2 items-center">
                         <Badge variant="outline" className={loc.is_active ? 'text-green-700' : 'text-muted-foreground'}>
                           {loc.is_active ? 'Active' : 'Inactive'}
                         </Badge>
+                        {loc.primary_type && (
+                          <Badge variant="secondary" className="capitalize text-xs">
+                            {loc.primary_type.replace(/_/g, ' ')}
+                          </Badge>
+                        )}
                         {loc.gbp_place_id && (
                           <Badge variant="secondary" className="font-mono text-xs truncate max-w-[180px]" title={loc.gbp_place_id}>
                             GBP connected
                           </Badge>
                         )}
+                        {loc.rating != null && loc.rating > 0 && (
+                          <span className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                            {loc.rating.toFixed(1)}
+                            {(loc.review_count ?? 0) > 0 && <span>({loc.review_count} reviews)</span>}
+                          </span>
+                        )}
+                        {loc.price_level && (
+                          <span className="text-sm font-medium text-muted-foreground">{priceLevelLabel(loc.price_level)}</span>
+                        )}
+                        {loc.business_status && loc.business_status !== 'OPERATIONAL' && (
+                          <Badge variant="outline" className="text-amber-700 border-amber-200">
+                            {loc.business_status.replace(/_/g, ' ')}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
+                  {loc.editorial_summary && (
+                    <p className="text-sm text-muted-foreground italic">{loc.editorial_summary}</p>
+                  )}
+                  {loc.types && loc.types.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {loc.types.filter(t => t !== loc.primary_type).slice(0, 6).map((t) => (
+                        <Badge key={t} variant="outline" className="text-xs capitalize font-normal">
+                          {t.replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {([loc.delivery, loc.takeout, loc.dine_in, loc.curbside_pickup, loc.reservable].some(Boolean)) && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">Services</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {loc.delivery && <Badge variant="secondary" className="text-xs">Delivery</Badge>}
+                        {loc.takeout && <Badge variant="secondary" className="text-xs">Takeout</Badge>}
+                        {loc.dine_in && <Badge variant="secondary" className="text-xs">Dine-in</Badge>}
+                        {loc.curbside_pickup && <Badge variant="secondary" className="text-xs">Curbside pickup</Badge>}
+                        {loc.reservable && <Badge variant="secondary" className="text-xs">Reservations</Badge>}
+                      </div>
+                    </div>
+                  )}
+                  {([loc.serves_breakfast, loc.serves_lunch, loc.serves_dinner, loc.serves_beer, loc.serves_wine, loc.serves_cocktails, loc.serves_vegetarian_food].some(Boolean)) && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">Menu</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {loc.serves_breakfast && <Badge variant="secondary" className="text-xs">Breakfast</Badge>}
+                        {loc.serves_lunch && <Badge variant="secondary" className="text-xs">Lunch</Badge>}
+                        {loc.serves_dinner && <Badge variant="secondary" className="text-xs">Dinner</Badge>}
+                        {loc.serves_beer && <Badge variant="secondary" className="text-xs">Beer</Badge>}
+                        {loc.serves_wine && <Badge variant="secondary" className="text-xs">Wine</Badge>}
+                        {loc.serves_cocktails && <Badge variant="secondary" className="text-xs">Cocktails</Badge>}
+                        {loc.serves_vegetarian_food && <Badge variant="secondary" className="text-xs">Vegetarian</Badge>}
+                      </div>
+                    </div>
+                  )}
+                  {([loc.outdoor_seating, loc.live_music, loc.good_for_children, loc.good_for_groups].some(Boolean)) && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">Amenities</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {loc.outdoor_seating && <Badge variant="secondary" className="text-xs">Outdoor seating</Badge>}
+                        {loc.live_music && <Badge variant="secondary" className="text-xs">Live music</Badge>}
+                        {loc.good_for_children && <Badge variant="secondary" className="text-xs">Good for kids</Badge>}
+                        {loc.good_for_groups && <Badge variant="secondary" className="text-xs">Good for groups</Badge>}
+                      </div>
+                    </div>
+                  )}
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground">
                     {loc.phone && <div><span className="text-muted-foreground">Phone</span> <a href={`tel:${loc.phone}`} className="text-foreground">{loc.phone}</a></div>}
                     {loc.website && <div><span className="text-muted-foreground">Website</span> <a href={loc.website.startsWith('http') ? loc.website : `https://${loc.website}`} target="_blank" rel="noopener noreferrer" className="text-primary underline truncate block">{loc.website}</a></div>}
@@ -379,8 +618,36 @@ export default function ClientDetailPage() {
                       <div className="sm:col-span-2"><span className="text-muted-foreground">Address</span> <span className="text-foreground">{JSON.stringify(loc.address)}</span></div>
                     )}
                     {loc.categories && loc.categories.length > 0 && <div className="sm:col-span-2"><span className="text-muted-foreground">Categories</span> <span className="text-foreground">{loc.categories.join(', ')}</span></div>}
+                    {loc.google_maps_uri && (
+                      <div className="sm:col-span-2">
+                        <span className="text-muted-foreground">Map</span>{' '}
+                        <a href={loc.google_maps_uri} target="_blank" rel="noopener noreferrer" className="text-primary underline text-sm">View on Google Maps</a>
+                      </div>
+                    )}
                     {loc.business_hours && typeof loc.business_hours === 'object' && Object.keys(loc.business_hours as object).length > 0 && (
-                      <div className="sm:col-span-2"><span className="text-muted-foreground">Hours</span> <pre className="text-xs mt-1 whitespace-pre-wrap">{JSON.stringify(loc.business_hours, null, 2)}</pre></div>
+                      <div className="sm:col-span-2">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedHoursLocId(expandedHoursLocId === loc.id ? null : loc.id)}
+                          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                        >
+                          <span className="text-muted-foreground">Hours</span>
+                          {expandedHoursLocId === loc.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                        {expandedHoursLocId === loc.id && (
+                          <div className="mt-2 text-sm text-foreground">
+                            {(loc.business_hours as { weekdayDescriptions?: string[] }).weekdayDescriptions?.length ? (
+                              <ul className="list-none space-y-0.5">
+                                {(loc.business_hours as { weekdayDescriptions?: string[] }).weekdayDescriptions!.map((line, i) => (
+                                  <li key={i}>{line}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(loc.business_hours, null, 2)}</pre>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </dl>
                 </div>
@@ -442,6 +709,12 @@ export default function ClientDetailPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
+      <LocationPhotoLightbox
+        photos={lightboxPhotos}
+        open={lightboxOpen}
+        onOpenChange={setLightboxOpen}
+        initialIndex={lightboxInitialIndex}
+      />
     </div>
   )
 }
