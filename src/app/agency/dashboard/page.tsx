@@ -8,11 +8,12 @@ import { Button } from '@/lib/ui'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle, BarChart3, ExternalLink, Download } from 'lucide-react'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardFilters, FilterState } from '@/components/dashboard/DashboardFilters'
 import { useState, useMemo, useEffect } from 'react'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
+import { useToast } from '@/hooks/use-toast'
 
 interface Client {
   id: string
@@ -34,6 +35,22 @@ export default function AgencyDashboardPage() {
 
   const orgId = activeOrgId || orgs[0]?.id
   const tenantName = orgs.find((o) => o.id === orgId)?.name || theme?.tenant_name || 'Your Agency'
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
+
+  // Handle GBP OAuth callback redirect (user lands here after connecting)
+  useEffect(() => {
+    const gbp = searchParams.get('gbp')
+    if (!gbp) return
+    if (gbp === 'connected') {
+      toast({ title: 'Google Business Profile connected', description: 'You can now sync name, address, and phone from GBP for your locations.' })
+    } else if (gbp === 'error') {
+      toast({ title: 'Connection failed', description: 'Could not connect Google Business Profile. Please try again.', variant: 'destructive' })
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gbp')
+    window.history.replaceState({}, '', url.pathname + url.search)
+  }, [searchParams, toast])
 
   const [clients, setClients] = useState<Client[]>([])
   const [locationCount, setLocationCount] = useState<number | null>(null)

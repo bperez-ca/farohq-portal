@@ -1,16 +1,17 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card, Button, Badge, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/lib/ui'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
-import { Loader2, MapPin, ChevronLeft, Zap, Archive, PauseCircle, Star, ChevronDown, ChevronUp, MessageCircle, FileText, Send, Plus, ExternalLink } from 'lucide-react'
+import { Loader2, MapPin, ChevronLeft, Zap, Archive, PauseCircle, Star, ChevronDown, ChevronUp, MessageCircle, FileText, Send, Plus, ExternalLink, RefreshCw, Link2 } from 'lucide-react'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
 import { ActivateClientModal } from '@/components/agency/ActivateClientModal'
 import { LocationPhotoLightbox } from '@/components/agency/LocationPhotoLightbox'
 import { placePhotoUrl } from '@/lib/place-photo'
+import { useToast } from '@/hooks/use-toast'
 
 interface Client {
   id: string
@@ -108,12 +109,39 @@ export default function ClientDetailPage() {
   const [lightboxPhotos, setLightboxPhotos] = useState<string[]>([])
   const [lightboxInitialIndex, setLightboxInitialIndex] = useState(0)
   const [expandedHoursLocId, setExpandedHoursLocId] = useState<string | null>(null)
+  const [gbpSyncLocationId, setGbpSyncLocationId] = useState<string | null>(null)
+  const [gbpConnectLocationId, setGbpConnectLocationId] = useState<string | null>(null)
+  const [gbpConnectedLocationIds, setGbpConnectedLocationIds] = useState<Set<string>>(new Set())
   const { activeOrgId, orgs } = useAuthSession()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
 
   const headerRating = locations.length > 0 && (locations[0].rating != null && locations[0].rating > 0)
     ? { rating: locations[0].rating, reviewCount: locations[0].review_count ?? 0 }
     : null
   const orgId = activeOrgId || orgs?.[0]?.id
+
+  // Handle OAuth callback query params (redirect back from Google)
+  useEffect(() => {
+    const gbp = searchParams.get('gbp')
+    if (!gbp) return
+    if (gbp === 'connected') {
+      toast({ title: 'Google Business Profile connected', description: 'You can now sync name, address, and phone from GBP.' })
+      // Refetch connected IDs so Connect/Reconnect and Sync buttons update
+      if (orgId) {
+        authenticatedFetch(`/api/v1/gbp/locations/connected?tenant_id=${orgId}`)
+          .then((res) => (res.ok ? res.json() : { location_ids: [] }))
+          .then((data) => setGbpConnectedLocationIds(new Set((data?.location_ids as string[]) || [])))
+          .catch(() => {})
+      }
+    } else if (gbp === 'error') {
+      toast({ title: 'Connection failed', description: 'Could not connect Google Business Profile. Please try again.', variant: 'destructive' })
+    }
+    // Clear query params from URL without full navigation
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gbp')
+    window.history.replaceState({}, '', url.pathname + url.search)
+  }, [searchParams, toast, orgId])
 
   const mapEmbedKey =
     typeof process !== 'undefined'
@@ -131,9 +159,13 @@ export default function ClientDetailPage() {
         setLoading(true)
         setError(null)
 
-        const [clientRes, locationsRes] = await Promise.all([
+        const orgIdForFetch = activeOrgId || orgs?.[0]?.id
+        const [clientRes, locationsRes, connectedRes] = await Promise.all([
           authenticatedFetch(`/api/v1/clients/${clientId}`),
           authenticatedFetch(`/api/v1/clients/${clientId}/locations`),
+          orgIdForFetch
+            ? authenticatedFetch(`/api/v1/gbp/locations/connected?tenant_id=${orgIdForFetch}`)
+            : Promise.resolve(null),
         ])
 
         if (clientRes.status === 401 || locationsRes.status === 401) {
@@ -147,9 +179,15 @@ export default function ClientDetailPage() {
 
         const clientData = await clientRes.json()
         const locationsData = await locationsRes.json()
-
         setClient(clientData)
         setLocations(locationsData?.locations || [])
+
+        if (connectedRes?.ok) {
+          const connectedData = await connectedRes.json().catch(() => ({}))
+          setGbpConnectedLocationIds(new Set((connectedData?.location_ids as string[]) || []))
+        } else {
+          setGbpConnectedLocationIds(new Set())
+        }
       } catch (err: unknown) {
         console.error('Failed to load client:', err)
         const msg = err instanceof Error ? err.message : ''
@@ -163,7 +201,7 @@ export default function ClientDetailPage() {
       }
     }
     loadData()
-  }, [clientId, router])
+  }, [clientId, router, activeOrgId, orgs])
 
   const refreshClient = useCallback(async () => {
     if (!clientId) return
@@ -177,6 +215,72 @@ export default function ClientDetailPage() {
       // keep existing
     }
   }, [clientId])
+
+  const refreshLocations = useCallback(async () => {
+    if (!clientId) return
+    try {
+      const res = await authenticatedFetch(`/api/v1/clients/${clientId}/locations`)
+      if (res.ok) {
+        const data = await res.json()
+        setLocations(data?.locations || [])
+      }
+    } catch {
+      // keep existing
+    }
+  }, [clientId])
+
+  const handleConnectGbp = useCallback(async (locationId: string) => {
+    if (!orgId) {
+      toast({ title: 'Select an organization', description: 'Choose an organization first.', variant: 'destructive' })
+      return
+    }
+    setGbpConnectLocationId(locationId)
+    try {
+      const res = await authenticatedFetch(`/api/v1/gbp/oauth/url?location_id=${locationId}&tenant_id=${orgId}`)
+      if (res.status === 401) {
+        router.push('/signin')
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const msg = (data as { error?: string }).error || 'Failed to get OAuth URL.'
+        toast({ title: 'Could not start connection', description: msg, variant: 'destructive' })
+        return
+      }
+      const url = (data as { url?: string }).url
+      if (url) {
+        window.location.href = url
+        return
+      }
+      toast({ title: 'Could not connect', description: 'GBP OAuth is not configured. Contact support or set Google OAuth credentials.', variant: 'destructive' })
+    } finally {
+      setGbpConnectLocationId(null)
+    }
+  }, [orgId, router, toast])
+
+  const handleSyncGbp = useCallback(async (locationId: string) => {
+    if (!orgId) {
+      toast({ title: 'Select an organization', description: 'Choose an organization first.', variant: 'destructive' })
+      return
+    }
+    setGbpSyncLocationId(locationId)
+    try {
+      const res = await authenticatedFetch(`/api/v1/gbp/sync/${locationId}?tenant_id=${orgId}`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        const updated = (data as { updated?: boolean }).updated
+        toast({ title: updated ? 'Location updated' : 'Sync complete', description: updated ? 'Name, address, and phone synced from Google Business Profile.' : 'NAP data retrieved.' })
+        await refreshLocations()
+      } else {
+        const msg = data.error || (res.status === 409 ? 'GBP not connected for this location. Connect first.' : 'Sync failed.')
+        toast({ title: 'Sync failed', description: msg, variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Sync failed', description: 'Network or server error.', variant: 'destructive' })
+    } finally {
+      setGbpSyncLocationId(null)
+    }
+  }, [orgId, refreshLocations, toast])
 
   const handleDeactivate = async () => {
     if (!clientId || !client) return
@@ -537,8 +641,18 @@ export default function ClientDetailPage() {
                           </Badge>
                         )}
                         {loc.gbp_place_id && (
-                          <Badge variant="secondary" className="font-mono text-xs truncate max-w-[180px]" title={loc.gbp_place_id}>
+                          <Badge variant="secondary" className="text-xs">
+                            GBP claimed
+                          </Badge>
+                        )}
+                        {gbpConnectedLocationIds.has(loc.id) && (
+                          <Badge variant="secondary" className="text-xs">
                             GBP connected
+                          </Badge>
+                        )}
+                        {loc.gbp_place_id && (
+                          <Badge variant="outline" className="font-mono text-xs truncate max-w-[180px]" title={loc.gbp_place_id}>
+                            Place ID
                           </Badge>
                         )}
                         {loc.rating != null && loc.rating > 0 && (
@@ -555,6 +669,38 @@ export default function ClientDetailPage() {
                           <Badge variant="outline" className="text-amber-700 border-amber-200">
                             {loc.business_status.replace(/_/g, ' ')}
                           </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs"
+                          disabled={!!gbpConnectLocationId}
+                          onClick={() => handleConnectGbp(loc.id)}
+                        >
+                          {gbpConnectLocationId === loc.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Link2 className="w-3.5 h-3.5" />
+                          )}
+                          {gbpConnectedLocationIds.has(loc.id) ? 'Reconnect GBP' : 'Connect GBP'}
+                        </Button>
+                        {gbpConnectedLocationIds.has(loc.id) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs"
+                            disabled={!!gbpSyncLocationId}
+                            onClick={() => handleSyncGbp(loc.id)}
+                          >
+                            {gbpSyncLocationId === loc.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            )}
+                            Sync from GBP
+                          </Button>
                         )}
                       </div>
                     </div>
