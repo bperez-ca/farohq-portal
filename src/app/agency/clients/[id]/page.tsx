@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { Card, Button, Badge, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/lib/ui'
+import { Card, Button, Badge, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label } from '@/lib/ui'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
-import { Loader2, MapPin, ChevronLeft, Zap, Archive, PauseCircle, Star, ChevronDown, ChevronUp, MessageCircle, FileText, Send, Plus, ExternalLink, RefreshCw, Link2 } from 'lucide-react'
+import { Loader2, MapPin, ChevronLeft, Zap, Archive, PauseCircle, Star, ChevronDown, ChevronUp, MessageCircle, FileText, Send, Plus, ExternalLink, RefreshCw, Link2, Phone } from 'lucide-react'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
 import { ActivateClientModal } from '@/components/agency/ActivateClientModal'
@@ -72,6 +72,12 @@ interface Location {
   updated_at: string
 }
 
+interface WhatsAppBinding {
+  connected: boolean
+  twilio_phone?: string
+  connected_at?: string
+}
+
 function priceLevelLabel(level: string): string {
   const map: Record<string, string> = {
     PRICE_LEVEL_FREE: 'Free',
@@ -112,6 +118,12 @@ export default function ClientDetailPage() {
   const [gbpSyncLocationId, setGbpSyncLocationId] = useState<string | null>(null)
   const [gbpConnectLocationId, setGbpConnectLocationId] = useState<string | null>(null)
   const [gbpConnectedLocationIds, setGbpConnectedLocationIds] = useState<Set<string>>(new Set())
+  const [whatsappByLocationId, setWhatsappByLocationId] = useState<Record<string, WhatsAppBinding>>({})
+  const [whatsappDisconnectLocationId, setWhatsappDisconnectLocationId] = useState<string | null>(null)
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false)
+  const [whatsappDialogLocationId, setWhatsappDialogLocationId] = useState<string | null>(null)
+  const [whatsappDialogPhone, setWhatsappDialogPhone] = useState('')
+  const [whatsappDialogSubmitting, setWhatsappDialogSubmitting] = useState(false)
   const { activeOrgId, orgs } = useAuthSession()
   const searchParams = useSearchParams()
   const { toast } = useToast()
@@ -188,6 +200,23 @@ export default function ClientDetailPage() {
         } else {
           setGbpConnectedLocationIds(new Set())
         }
+
+        // Fetch WhatsApp binding for each location (tenant-scoped)
+        const locs = locationsData?.locations || []
+        if (orgIdForFetch && locs.length > 0) {
+          const bindingPromises = locs.map(async (loc: Location) => {
+            const res = await authenticatedFetch(`/api/v1/locations/${loc.id}/whatsapp?tenant_id=${orgIdForFetch}`)
+            if (!res.ok) return { id: loc.id, binding: { connected: false } as WhatsAppBinding }
+            const data = await res.json().catch(() => ({}))
+            return { id: loc.id, binding: data as WhatsAppBinding }
+          })
+          const results = await Promise.all(bindingPromises)
+          const map: Record<string, WhatsAppBinding> = {}
+          results.forEach(({ id, binding }) => { map[id] = binding })
+          setWhatsappByLocationId(map)
+        } else {
+          setWhatsappByLocationId({})
+        }
       } catch (err: unknown) {
         console.error('Failed to load client:', err)
         const msg = err instanceof Error ? err.message : ''
@@ -257,6 +286,71 @@ export default function ClientDetailPage() {
       setGbpConnectLocationId(null)
     }
   }, [orgId, router, toast])
+
+  const refetchWhatsAppBinding = useCallback(async (locationId: string) => {
+    if (!orgId) return
+    try {
+      const res = await authenticatedFetch(`/api/v1/locations/${locationId}/whatsapp?tenant_id=${orgId}`)
+      const data = res.ok ? await res.json().catch(() => ({})) : { connected: false }
+      setWhatsappByLocationId((prev) => ({ ...prev, [locationId]: data as WhatsAppBinding }))
+    } catch {
+      setWhatsappByLocationId((prev) => ({ ...prev, [locationId]: { connected: false } }))
+    }
+  }, [orgId])
+
+  const handleConnectWhatsApp = useCallback((locationId: string) => {
+    setWhatsappDialogLocationId(locationId)
+    setWhatsappDialogPhone(whatsappByLocationId[locationId]?.twilio_phone ?? '')
+    setWhatsappDialogOpen(true)
+  }, [whatsappByLocationId])
+
+  const handleWhatsappDialogSubmit = useCallback(async () => {
+    if (!whatsappDialogLocationId || !orgId) return
+    const phone = whatsappDialogPhone.trim()
+    if (!phone) {
+      toast({ title: 'Number required', description: 'Enter the Twilio WhatsApp number (E.164, e.g. +14155551234).', variant: 'destructive' })
+      return
+    }
+    setWhatsappDialogSubmitting(true)
+    try {
+      const res = await authenticatedFetch(`/api/v1/locations/${whatsappDialogLocationId}/whatsapp?tenant_id=${orgId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ twilio_phone: phone }),
+      })
+      if (res.ok) {
+        toast({ title: 'WhatsApp connected', description: `Number ${phone} is now linked to this location.` })
+        setWhatsappDialogOpen(false)
+        setWhatsappDialogLocationId(null)
+        setWhatsappDialogPhone('')
+        await refetchWhatsAppBinding(whatsappDialogLocationId)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: 'Could not connect', description: (data as { error?: string }).error || 'Failed to connect WhatsApp.', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Could not connect', description: 'Network or server error.', variant: 'destructive' })
+    } finally {
+      setWhatsappDialogSubmitting(false)
+    }
+  }, [whatsappDialogLocationId, whatsappDialogPhone, orgId, refetchWhatsAppBinding, toast])
+
+  const handleDisconnectWhatsApp = useCallback(async (locationId: string) => {
+    if (!orgId) return
+    setWhatsappDisconnectLocationId(locationId)
+    try {
+      const res = await authenticatedFetch(`/api/v1/locations/${locationId}/whatsapp?tenant_id=${orgId}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast({ title: 'WhatsApp disconnected', description: 'The number has been unlinked from this location.' })
+        await refetchWhatsAppBinding(locationId)
+      } else {
+        toast({ title: 'Could not disconnect', description: 'Failed to disconnect WhatsApp.', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Could not disconnect', description: 'Network or server error.', variant: 'destructive' })
+    } finally {
+      setWhatsappDisconnectLocationId(null)
+    }
+  }, [orgId, refetchWhatsAppBinding, toast])
 
   const handleSyncGbp = useCallback(async (locationId: string) => {
     if (!orgId) {
@@ -650,6 +744,12 @@ export default function ClientDetailPage() {
                             GBP connected
                           </Badge>
                         )}
+                        {whatsappByLocationId[loc.id]?.connected && (
+                          <Badge variant="secondary" className="text-xs gap-1">
+                            <MessageCircle className="w-3 h-3" />
+                            WhatsApp {whatsappByLocationId[loc.id].twilio_phone && `(${whatsappByLocationId[loc.id].twilio_phone})`}
+                          </Badge>
+                        )}
                         {loc.gbp_place_id && (
                           <Badge variant="outline" className="font-mono text-xs truncate max-w-[180px]" title={loc.gbp_place_id}>
                             Place ID
@@ -700,6 +800,31 @@ export default function ClientDetailPage() {
                               <RefreshCw className="w-3.5 h-3.5" />
                             )}
                             Sync from GBP
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs"
+                          onClick={() => handleConnectWhatsApp(loc.id)}
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          {whatsappByLocationId[loc.id]?.connected ? 'Change WhatsApp' : 'Connect WhatsApp'}
+                        </Button>
+                        {whatsappByLocationId[loc.id]?.connected && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs text-muted-foreground"
+                            disabled={!!whatsappDisconnectLocationId}
+                            onClick={() => handleDisconnectWhatsApp(loc.id)}
+                          >
+                            {whatsappDisconnectLocationId === loc.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Phone className="w-3.5 h-3.5" />
+                            )}
+                            Disconnect WhatsApp
                           </Button>
                         )}
                       </div>
@@ -854,6 +979,37 @@ export default function ClientDetailPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={whatsappDialogOpen} onOpenChange={(open) => { setWhatsappDialogOpen(open); if (!open) { setWhatsappDialogLocationId(null); setWhatsappDialogPhone(''); } }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Connect WhatsApp</DialogTitle>
+              <DialogDescription>
+                Enter the Twilio WhatsApp number (E.164 format, e.g. +14155551234) to link to this location. Inbound messages to this number will appear in the inbox.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="whatsapp-phone">Twilio WhatsApp number</Label>
+                <Input
+                  id="whatsapp-phone"
+                  placeholder="+14155551234"
+                  value={whatsappDialogPhone}
+                  onChange={(e) => setWhatsappDialogPhone(e.target.value)}
+                  disabled={whatsappDialogSubmitting}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setWhatsappDialogOpen(false)} disabled={whatsappDialogSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={() => handleWhatsappDialogSubmit()} disabled={whatsappDialogSubmitting}>
+                {whatsappDialogSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Connect'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       <LocationPhotoLightbox
         photos={lightboxPhotos}
