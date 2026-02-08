@@ -123,7 +123,7 @@ export async function proxyApiRequest(
   const seenHeaders = new Set<string>();
   
   // Forward relevant headers (avoid duplicates by using first occurrence only)
-  for (const [key, value] of request.headers.entries()) {
+  for (const [key, value] of Array.from(request.headers.entries())) {
     const lowerKey = key.toLowerCase();
     if (headersToForward.includes(lowerKey) && !seenHeaders.has(lowerKey)) {
       let cleanedValue = value;

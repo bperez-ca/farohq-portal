@@ -23,7 +23,8 @@ export function useAuthenticatedApi() {
     options: RequestInit = {}
   ): Promise<T> => {
     const token = await getToken();
-    return apiRequest<T>(endpoint, { ...options, token: token || undefined });
+    const { signal, ...rest } = options;
+    return apiRequest<T>(endpoint, { ...rest, signal: signal ?? undefined, token: token || undefined });
   };
 
   const authenticatedGet = async <T = unknown>(endpoint: string): Promise<T> => {

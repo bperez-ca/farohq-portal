@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card } from '@/components/Card';
+import { Card } from '@/lib/ui';
 
 export interface StatsCardProps {
   value: string | number;
@@ -23,7 +23,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   };
 
   return (
-    <Card variant="stats" className={className}>
+    <Card className={className}>
       <div className={`stats-number ${colorClasses[color]}`}>
         {value}
       </div>

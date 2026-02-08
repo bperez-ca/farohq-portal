@@ -2,12 +2,12 @@
 
 import { useUser } from '@clerk/nextjs'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { safeLogError } from '@/lib/log-sanitizer'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { user, isLoaded: userLoaded } = useUser()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -89,5 +89,13 @@ export default function DashboardPage() {
         <p className="mt-4 text-gray-600">Redirecting...</p>
       </div>
     </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Loading…</div></div>}>
+      <DashboardContent />
+    </Suspense>
   )
 }

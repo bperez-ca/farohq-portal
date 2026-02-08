@@ -1,70 +1,88 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { PageHeader } from '@/components/shared/PageHeader'
-import { Card } from '@/lib/ui'
-import { EmptyState } from '@/components/shared/EmptyState'
-import { Inbox, Loader2 } from 'lucide-react'
-import { useAuthSession } from '@/contexts/AuthSessionContext'
-import { authenticatedFetch } from '@/lib/authenticated-fetch'
-import { ConversationRow } from '@/components/ui/ConversationRow'
-import type { ConversationListResponse } from '@/lib/conversations/types'
+import { useRouter, useSearchParams } from 'next/navigation';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { Card } from '@/lib/ui';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { Inbox } from 'lucide-react';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
+import { ConversationList } from '@/components/inbox/ConversationList';
+import { ConversationThread } from '@/components/inbox/ConversationThread';
+import { ContactPanel } from '@/components/inbox/ContactPanel';
+import { ContactPanelSkeleton } from '@/components/inbox/ContactPanelSkeleton';
+import { useEffect, useState, Suspense } from 'react';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
+import type { Conversation } from '@/lib/conversations/types';
 
-function formatTimestamp(iso: string | null, fallback: string): string {
-  if (!iso) return fallback
-  const d = new Date(iso)
-  const now = new Date()
-  const sameDay = d.toDateString() === now.toDateString()
-  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const yesterday = new Date(now)
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
+/**
+ * Inbox: single-page layout with conversation list (left), thread (center), contact panel (right).
+ * Selection and filters via searchParams: conversation, q, assigned_to.
+ */
+function BusinessInboxContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { activeOrgId, loading: sessionLoading } = useAuthSession();
+  const selectedId = searchParams.get('conversation') ?? undefined;
 
-function channelDisplayName(channel: string): string {
-  if (channel === 'whatsapp') return 'WhatsApp'
-  if (channel === 'gbp') return 'Google Business'
-  return channel
-}
+  const goBackToList = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('conversation');
+    router.push(`/business/inbox?${next.toString()}`);
+  };
 
-/** Inbox: list conversations from Core App API. */
-export default function BusinessInboxPage() {
-  const router = useRouter()
-  const { activeOrgId, loading: sessionLoading } = useAuthSession()
-  const [data, setData] = useState<ConversationListResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [contactConversation, setContactConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
-    if (!activeOrgId) {
-      setLoading(false)
-      setData(null)
-      return
+    if (!selectedId || !activeOrgId) {
+      setContactConversation(null);
+      return;
     }
-    setLoading(true)
-    setError(null)
-    authenticatedFetch(`/api/v1/conversations?tenant_id=${encodeURIComponent(activeOrgId)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.statusText || 'Failed to load conversations')
-        return res.json()
-      })
-      .then((json: ConversationListResponse) => {
-        setData(json)
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load conversations')
-        setData(null)
-      })
-      .finally(() => setLoading(false))
-  }, [activeOrgId])
+    authenticatedFetch(
+      `/api/v1/conversations/${selectedId}?tenant_id=${encodeURIComponent(activeOrgId)}`
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Conversation | null) => setContactConversation(data))
+      .catch(() => setContactConversation(null));
+  }, [selectedId, activeOrgId]);
 
-  const hasConversations = Boolean(data?.conversations?.length)
-  const isLoading = sessionLoading || loading
+  if (sessionLoading) {
+    return (
+      <div className="min-h-screen pb-24 md:pb-6">
+        <PageHeader
+          breadcrumbs={[
+            { label: 'Business', href: '/business/dashboard' },
+            { label: 'Inbox' },
+          ]}
+          title="Inbox"
+          subtitle="Unified lead conversations"
+        />
+        <div className="flex h-[calc(100vh-140px)] max-w-7xl mx-auto px-4 md:px-6" />
+      </div>
+    );
+  }
+
+  if (!activeOrgId) {
+    return (
+      <div className="min-h-screen pb-24 md:pb-6">
+        <PageHeader
+          breadcrumbs={[
+            { label: 'Business', href: '/business/dashboard' },
+            { label: 'Inbox' },
+          ]}
+          title="Inbox"
+          subtitle="Unified lead conversations"
+        />
+        <div className="max-w-7xl mx-auto px-6 py-10">
+          <Card className="rounded-xl shadow-sm">
+            <EmptyState variant="inbox" icon={Inbox} />
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen pb-24 md:pb-6">
+    <div className="min-h-screen pb-24 md:pb-6 flex flex-col">
       <PageHeader
         breadcrumbs={[
           { label: 'Business', href: '/business/dashboard' },
@@ -73,41 +91,56 @@ export default function BusinessInboxPage() {
         title="Inbox"
         subtitle="Unified lead conversations"
       />
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        {!activeOrgId && !sessionLoading ? (
-          <Card className="rounded-xl shadow-sm">
-            <EmptyState variant="inbox" icon={Inbox} />
-          </Card>
-        ) : isLoading ? (
-          <Card className="rounded-xl shadow-sm p-12 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </Card>
-        ) : error ? (
-          <Card className="rounded-xl shadow-sm p-8">
-            <p className="text-destructive">{error}</p>
-          </Card>
-        ) : hasConversations ? (
-          <Card className="rounded-xl shadow-sm overflow-hidden p-0">
-            <div className="divide-y divide-border">
-              {data!.conversations.map((conv) => (
-                <ConversationRow
-                  key={conv.id}
-                  channel={channelDisplayName(conv.channel)}
-                  contactName={conv.contact_name || conv.contact_phone || 'Unknown'}
-                  lastMessage={conv.last_message_preview || '(no messages)'}
-                  timestamp={formatTimestamp(conv.last_message_at, '—')}
-                  status={conv.status === 'open' ? 'waiting' : 'replied'}
-                  onClick={() => router.push(`/business/inbox/${conv.id}`)}
-                />
-              ))}
+      <div className="flex flex-1 min-h-0 max-w-full">
+        {/* List - left, 320px on desktop; full width on mobile when no selection */}
+        <div
+          className={`w-full md:w-80 border-r flex-shrink-0 flex flex-col bg-background ${
+            selectedId ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          <ConversationList selectedId={selectedId} />
+        </div>
+
+        {/* Thread - center, flexible */}
+        <div
+          className={`flex-1 flex flex-col min-w-0 bg-muted/30 ${
+            selectedId ? 'flex' : 'hidden md:flex'
+          }`}
+        >
+          {selectedId ? (
+            <Card className="rounded-none md:rounded-l-none border-0 shadow-none flex-1 flex flex-col min-h-0 m-0">
+              <ConversationThread
+                conversationId={selectedId}
+                showBack={true}
+                onBack={goBackToList}
+              />
+            </Card>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <EmptyState variant="inbox" icon={Inbox} />
             </div>
-          </Card>
-        ) : (
-          <Card className="rounded-xl shadow-sm">
-            <EmptyState variant="inbox" icon={Inbox} />
-          </Card>
+          )}
+        </div>
+
+        {/* Contact panel - right, 280px, hidden on small screens */}
+        {selectedId && (
+          <div className="w-72 border-l flex-shrink-0 hidden lg:flex flex-col bg-background">
+            {contactConversation ? (
+              <ContactPanel conversation={contactConversation} />
+            ) : (
+              <ContactPanelSkeleton />
+            )}
+          </div>
         )}
       </div>
     </div>
-  )
+  );
+}
+
+export default function BusinessInboxPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Loading…</div></div>}>
+      <BusinessInboxContent />
+    </Suspense>
+  );
 }

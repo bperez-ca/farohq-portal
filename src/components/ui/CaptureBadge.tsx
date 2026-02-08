@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { LeadSource } from "@/lib/types";
-// @ts-expect-error - sonner is an optional peer dependency
 import { toast } from "sonner";
 
 const leadSources: LeadSource[] = [

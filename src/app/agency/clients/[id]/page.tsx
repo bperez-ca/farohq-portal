@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card, Button, Badge, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label } from '@/lib/ui'
@@ -97,7 +97,7 @@ function getLocationCoords(loc: Location): { lat: number; lng: number } | null {
   return null
 }
 
-export default function ClientDetailPage() {
+function ClientDetailContent() {
   const router = useRouter()
   const params = useParams()
   const clientId = params?.id as string
@@ -641,7 +641,7 @@ export default function ClientDetailPage() {
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
                   />
-                ) : firstLocationWithCoords ? (
+                ) : firstLocationWithCoords?.coords ? (
                   <iframe
                     title="Client locations map"
                     width="100%"
@@ -882,9 +882,9 @@ export default function ClientDetailPage() {
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground">
                     {loc.phone && <div><span className="text-muted-foreground">Phone</span> <a href={`tel:${loc.phone}`} className="text-foreground">{loc.phone}</a></div>}
                     {loc.website && <div><span className="text-muted-foreground">Website</span> <a href={loc.website.startsWith('http') ? loc.website : `https://${loc.website}`} target="_blank" rel="noopener noreferrer" className="text-primary underline truncate block">{loc.website}</a></div>}
-                    {loc.address && (typeof loc.address === 'object' && (loc.address as Record<string, unknown>).formatted_address) && (
+                    {loc.address && typeof loc.address === 'object' && (loc.address as Record<string, unknown>).formatted_address != null ? (
                       <div className="sm:col-span-2"><span className="text-muted-foreground">Address</span> <span className="text-foreground">{(loc.address as { formatted_address?: string }).formatted_address}</span></div>
-                    )}
+                    ) : null}
                     {loc.address && typeof loc.address === 'object' && !(loc.address as Record<string, unknown>).formatted_address && Object.keys(loc.address as object).length > 0 && (
                       <div className="sm:col-span-2"><span className="text-muted-foreground">Address</span> <span className="text-foreground">{JSON.stringify(loc.address)}</span></div>
                     )}
@@ -1018,5 +1018,13 @@ export default function ClientDetailPage() {
         initialIndex={lightboxInitialIndex}
       />
     </div>
+  )
+}
+
+export default function ClientDetailPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Loading…</div></div>}>
+      <ClientDetailContent />
+    </Suspense>
   )
 }

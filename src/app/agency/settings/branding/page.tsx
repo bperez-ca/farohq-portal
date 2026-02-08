@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -51,7 +51,7 @@ interface TenantData {
   created_at: string
 }
 
-export default function BrandingSettingsPage() {
+function BrandingSettingsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { orgs, activeOrgId } = useAuthSession()
@@ -1415,5 +1415,13 @@ export default function BrandingSettingsPage() {
         </div>
       </form>
     </div>
+  )
+}
+
+export default function BrandingSettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Loading…</div></div>}>
+      <BrandingSettingsContent />
+    </Suspense>
   )
 }

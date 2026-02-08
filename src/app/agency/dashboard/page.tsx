@@ -10,7 +10,7 @@ import { AlertTriangle, BarChart3, ExternalLink, Download } from 'lucide-react'
 import { useBrandTheme } from '@/components/branding/BrandThemeProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardFilters, FilterState } from '@/components/dashboard/DashboardFilters'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Suspense } from 'react'
 import { useAuthSession } from '@/contexts/AuthSessionContext'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { useToast } from '@/hooks/use-toast'
@@ -26,7 +26,7 @@ interface Client {
   updated_at: string
 }
 
-export default function AgencyDashboardPage() {
+function AgencyDashboardContent() {
   const router = useRouter()
   const { theme } = useBrandTheme()
   const { activeOrgId, orgs, loading: sessionLoading } = useAuthSession()
@@ -361,5 +361,13 @@ export default function AgencyDashboardPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function AgencyDashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Loading…</div></div>}>
+      <AgencyDashboardContent />
+    </Suspense>
   )
 }

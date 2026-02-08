@@ -38,7 +38,7 @@ export function LocationPhotoLightbox({
       closeOnOutsideClick: true,
       zoomable: true,
       draggable: true,
-    })
+    } as Parameters<typeof GLightbox>[0])
 
     instanceRef.current = instance
     instance.openAt(startIndex)

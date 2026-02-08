@@ -562,7 +562,7 @@ export function AgencyOnboardingForm({ onComplete }: AgencyOnboardingFormProps) 
             type="submit"
             className="w-full"
             style={{ backgroundColor: brandColor }}
-            disabled={isSubmitting || isUploading || slugAvailable === false || (subdomain && subdomainAvailable === false)}
+            disabled={Boolean(isSubmitting || isUploading || slugAvailable === false || (subdomain && subdomainAvailable === false))}
           >
             {isSubmitting || isUploading ? 'Creating...' : 'Create Agency'}
           </Button>

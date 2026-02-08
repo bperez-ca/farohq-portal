@@ -82,23 +82,25 @@ export class BrandClient {
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
-      (error: AxiosError) => {
+      (error: AxiosError<{ error?: string }>) => {
+        const data = error.response?.data
+        const message = data && typeof data === 'object' && 'error' in data ? data.error : undefined
         if (error.response?.status === 403) {
           throw new BrandAPIError(
-            error.response.data?.error || 'Forbidden: Feature not available for your tier',
+            message || 'Forbidden: Feature not available for your tier',
             403,
             'TIER_REQUIRED'
           )
         }
         if (error.response?.status === 404) {
           throw new BrandAPIError(
-            error.response.data?.error || 'Brand not found',
+            message || 'Brand not found',
             404,
             'NOT_FOUND'
           )
         }
         throw new BrandAPIError(
-          error.response?.data?.error || error.message || 'Unknown error',
+          message || error.message || 'Unknown error',
           error.response?.status,
           error.code
         )

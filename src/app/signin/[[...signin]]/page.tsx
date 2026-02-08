@@ -1,10 +1,11 @@
 'use client'
 
+import { Suspense } from 'react'
 import { SignIn } from '@clerk/nextjs'
 import { AuthLayout } from '@/components/auth/AuthLayout'
 import { useSearchParams } from 'next/navigation'
 
-export default function SignInPage() {
+function SignInContent() {
   const searchParams = useSearchParams()
   const redirectUrl = searchParams.get('redirect_url') || '/dashboard'
 
@@ -23,5 +24,13 @@ export default function SignInPage() {
         signUpUrl="/signup"
       />
     </AuthLayout>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Loading…</div></div>}>
+      <SignInContent />
+    </Suspense>
   )
 }

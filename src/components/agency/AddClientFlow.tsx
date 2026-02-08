@@ -13,7 +13,7 @@ import {
   Label,
   Card,
 } from '@/lib/ui'
-import { Loader2, MapPin, Building2, Star, ChevronDown, ChevronUp, ExternalLink, PlusCircle, LayoutDashboard } from 'lucide-react'
+import { Loader2, MapPin, Building2, Star, ChevronDown, ExternalLink, PlusCircle, LayoutDashboard } from 'lucide-react'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 
 export type PlaceCandidate = {
